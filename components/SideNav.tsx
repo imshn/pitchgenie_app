@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   X,
+  FileText,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -39,6 +40,11 @@ export default function Sidebar() {
       name: "Dashboard",
       href: "/dashboard",
       icon: <LayoutDashboard size={18} />,
+    },
+    {
+      name: "Templates",
+      href: "/templates",
+      icon: <FileText size={18} />,
     },
     {
       name: "Upload CSV",

@@ -1,23 +1,109 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// components/EmailPreviewDrawer.tsx
 "use client";
 
 import { Fragment } from "react";
 import { Dialog, Transition } from "@headlessui/react";
+import axios from "axios";
+import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
-import { Copy, Download, Mail } from "lucide-react";
+
+import SequenceDrawer from "./SequenceDrawer";
+import LinkedInDrawer from "./LinkedInDrawer";
+
+type PreviewData =
+  | { type: "email"; subject: string; body: string; followUp: string }
+  | { type: "linkedin"; connect: string; followup: string }
+  | { type: "sequence"; sequence: Record<string, string> }
+  | null;
 
 export default function EmailPreviewDrawer({
   open,
   onClose,
-  subject,
-  body,
-  followUp,
+  previewData,
+  user, // firebase user passed from parent (LeadTable)
 }: {
   open: boolean;
   onClose: () => void;
-  subject?: string;
-  body?: string;
-  followUp?: string;
+  previewData: PreviewData;
+  user: any;
 }) {
+  // Guard
+  if (!previewData) return null;
+
+  // Route to sequence or linkedin drawer modes
+  if (previewData.type === "sequence") {
+  return (
+    <SequenceDrawer
+      open={open}
+      onClose={onClose}
+      sequence={previewData.sequence}
+      user={user}
+    />
+  );
+}
+
+  if (previewData.type === "linkedin") {
+    return (
+      <LinkedInDrawer
+        open={open}
+        onClose={onClose}
+        connect={previewData.connect}
+        followup={previewData.followup}
+      />
+    );
+  }
+
+  // email mode
+  const { subject, body, followUp } = previewData;
+
+  const saveAsTemplate = async () => {
+    if (!previewData || previewData.type !== "email") {
+      toast.error("Templates can only be saved from Email Preview.");
+      return;
+    }
+
+    try {
+      const token = await user.getIdToken();
+
+      const subject = previewData.subject || "Untitled Template";
+      const body = previewData.body || "";
+      const followUp = previewData.followUp || "";
+
+      const fullPrompt = `${subject}\n\n${body}\n\nFollow-up:\n${followUp}`;
+
+      const res = await axios.post(
+        "/api/createTemplate",
+        {
+          uid: user.uid,
+          title: subject,
+          prompt: fullPrompt,
+          type: "email",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      toast.success("Template saved!");
+      console.log("Saved template:", res.data);
+    } catch (error: any) {
+      console.error("Save template error:", error);
+      toast.error("Error saving template");
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
   const downloadTxt = (filename: string, content: string) => {
     const blob = new Blob([content], { type: "text/plain" });
     const link = document.createElement("a");
@@ -26,160 +112,87 @@ export default function EmailPreviewDrawer({
     link.click();
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      // optional toast if you use toast helper
-      // toast.success("Copied to clipboard");
-    } catch (e) {
-      console.error("Clipboard failed", e);
-    }
-  };
-
-  const mailto = () => {
-    const bodySafe = encodeURIComponent(body || "");
-    const subjectSafe = encodeURIComponent(subject || "");
-    window.open(`mailto:?subject=${subjectSafe}&body=${bodySafe}`, "_blank");
-  };
-
   return (
-    <Transition.Root show={open} as={Fragment}>
-      <Dialog as="div" className="fixed inset-0 overflow-hidden z-50" onClose={onClose}>
-        <div className="absolute inset-0 overflow-hidden">
-          {/* Backdrop */}
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-40"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-40"
-            leaveTo="opacity-0"
-          >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          </Transition.Child>
+  <Transition.Root show={open} as={Fragment}>
+    <Dialog as="div" className="fixed inset-0 z-50" onClose={onClose}>
+      
+      {/* BACKDROP */}
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-xl transition-opacity" />
 
-          <div className="fixed inset-y-0 right-0 pl-10 max-w-full flex">
-            <Transition.Child
-              as={Fragment}
-              enter="transform transition ease-in-out duration-300"
-              enterFrom="translate-x-full"
-              enterTo="translate-x-0"
-              leave="transform transition ease-in-out duration-300"
-              leaveFrom="translate-x-0"
-              leaveTo="translate-x-full"
-            >
-              <div className="w-screen max-w-xl">
-                <div className="h-full flex flex-col bg-[#0F1115] border-l border-white/6 shadow-2xl">
-                  {/* Header */}
-                  <div className="px-6 py-4 flex items-center justify-between border-b border-white/6">
-                    <div>
-                      <h3 className="text-lg font-semibold">{subject || "No subject"}</h3>
-                      <p className="text-sm text-gray-400">{/* small subtitle if needed */}</p>
-                    </div>
+      {/* PANEL */}
+      <div className="fixed right-0 top-0 h-full w-[480px] bg-[#111214] border-l border-white/10 shadow-2xl">
+        <div className="flex flex-col h-full">
 
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="ghost"
-                        className="rounded-md"
-                        onClick={() => copyToClipboard(subject || "")}
-                      >
-                        <Copy size={16} />
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        className="rounded-md"
-                        onClick={() => downloadTxt("subject.txt", subject || "")}
-                      >
-                        <Download size={16} />
-                      </Button>
-
-                      <Button variant="secondary" onClick={mailto}>
-                        <Mail size={14} className="mr-2" /> Send
-                      </Button>
-
-                      <Button variant="ghost" onClick={onClose}>
-                        Close
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-6 overflow-y-auto">
-                    <section className="mb-6">
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">Email body</h4>
-                      <div className="whitespace-pre-wrap text-sm text-gray-100 leading-6 bg-white/3 p-4 rounded-xl">
-                        {body || "No body generated yet."}
-                      </div>
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => copyToClipboard(body || "")}
-                        >
-                          <Copy size={14} className="mr-2" /> Copy Body
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          onClick={() => downloadTxt("email_body.txt", body || "")}
-                        >
-                          <Download size={14} className="mr-2" /> Download
-                        </Button>
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4 className="text-sm font-medium text-gray-300 mb-2">Follow up</h4>
-                      <div className="whitespace-pre-wrap text-sm text-gray-100 leading-6 bg-white/3 p-4 rounded-xl">
-                        {followUp || "No follow-up generated yet."}
-                      </div>
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => copyToClipboard(followUp || "")}
-                        >
-                          <Copy size={14} className="mr-2" /> Copy Follow-up
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          onClick={() => downloadTxt("followup.txt", followUp || "")}
-                        >
-                          <Download size={14} className="mr-2" /> Download
-                        </Button>
-                      </div>
-                    </section>
-                  </div>
-
-                  {/* Footer actions */}
-                  <div className="px-6 py-4 border-t border-white/6 flex items-center justify-between">
-                    <div className="text-sm text-gray-400">Actions</div>
-
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => {
-                          copyToClipboard(`${subject}\n\n${body}`);
-                        }}
-                      >
-                        Copy All
-                      </Button>
-
-                      <Button
-                        onClick={() => {
-                          downloadTxt("email_full.txt", `${subject}\n\n${body}\n\nFollow-up:\n${followUp}`);
-                        }}
-                      >
-                        Download All
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Transition.Child>
+          {/* HEADER */}
+          <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold text-white">{subject}</h1>
+              <p className="text-xs text-gray-400 mt-1">Cold Email Preview</p>
+            </div>
+            <Button variant="ghost" onClick={onClose}>Close</Button>
           </div>
+
+          {/* CONTENT */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
+            
+            {/* SUBJECT */}
+            <section>
+              <h2 className="text-sm font-semibold text-gray-300 mb-2">Subject</h2>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-gray-100">
+                {subject}
+              </div>
+            </section>
+
+            {/* BODY */}
+            <section>
+              <h2 className="text-sm font-semibold text-gray-300 mb-2">Email Body</h2>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-gray-100 leading-6">
+                {body}
+              </div>
+
+              <div className="mt-3 flex gap-3">
+                <Button variant="outline" onClick={() => copyToClipboard(body)}>Copy Body</Button>
+                <Button variant="outline" onClick={() => downloadTxt("body.txt", body)}>Download</Button>
+              </div>
+            </section>
+
+            {/* FOLLOW-UP */}
+            <section>
+              <h2 className="text-sm font-semibold text-gray-300 mb-2">Follow-up</h2>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-gray-100 leading-6">
+                {followUp}
+              </div>
+
+              <div className="mt-3 flex gap-3">
+                <Button variant="outline" onClick={() => copyToClipboard(followUp)}>Copy Follow-up</Button>
+                <Button variant="outline" onClick={() => downloadTxt("followup.txt", followUp)}>Download</Button>
+              </div>
+            </section>
+
+          </div>
+
+          {/* FOOTER */}
+          <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
+            <div className="text-sm text-gray-400">Actions</div>
+            <div className="flex gap-3">
+              <Button onClick={() => copyToClipboard(`${subject}\n\n${body}`)}>Copy All</Button>
+              <Button onClick={() => downloadTxt("email_full.txt", `${subject}\n\n${body}\n\nFollow-up:\n${followUp}`)}>
+                Download All
+              </Button>
+
+              {/* Save Template only for emails */}
+              {previewData.type === "email" && (
+                <Button variant="secondary" onClick={saveAsTemplate}>
+                  Save Template
+                </Button>
+              )}
+            </div>
+          </div>
+
         </div>
-      </Dialog>
-    </Transition.Root>
-  );
+      </div>
+    </Dialog>
+  </Transition.Root>
+);
+
 }

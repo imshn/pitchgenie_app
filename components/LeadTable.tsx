@@ -3,64 +3,43 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
+import toast from "react-hot-toast";
 import { db } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  onSnapshot,
-} from "firebase/firestore";
-import { auth } from "@/lib/firebase";
-
-import {
-  Table,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info, Mail, Zap } from "lucide-react";
-
-import EmailPreviewModal from "@/components/EmailPreviewModal";
 import EmailPreviewDrawer from "./EmailPreviewDrawer";
 
-export default function LeadTable({ user }: any) {
+export default function LeadTable({ user }: { user: any }) {
   const [leads, setLeads] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState(0);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewData, setPreviewData] = useState<any>(null);
 
-  const fetchLeads = () => {
-    setLoading(true);
+  // Independent loading states
+  const [loadingEmailId, setLoadingEmailId] = useState<string | null>(null);
+  const [loadingLinkedInId, setLoadingLinkedInId] = useState<string | null>(null);
+  const [loadingSequenceId, setLoadingSequenceId] = useState<string | null>(null);
+
+  // Preview Drawer
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<any | null>(null);
+
+  const fetchLeads = async () => {
+    if (!user) return;
     const q = query(collection(db, "leads"), where("uid", "==", user.uid));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const list = querySnapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setLeads(list);
-      setLoading(false);
-    });
-    return unsubscribe;
+    const snap = await getDocs(q);
+    setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   };
 
   useEffect(() => {
-    if (user) {
-      const unsubscribe = fetchLeads();
-      return () => unsubscribe();
-    }
+    fetchLeads();
   }, [user]);
 
+  // -----------------------
+  // EMAIL GENERATION
+  // -----------------------
   const generateEmail = async (lead: any) => {
     try {
-      setLoadingId(lead.id);
+      setLoadingEmailId(lead.id);
       const token = await user.getIdToken();
+
       const res = await axios.post(
         "/api/generateEmail",
         {
@@ -73,177 +52,218 @@ export default function LeadTable({ user }: any) {
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setPreviewData(res.data);
+
+      await fetchLeads();
+
+      setPreviewData({
+        type: "email",
+        subject: res.data.subject,
+        body: res.data.body,
+        followUp: res.data.followUp,
+      });
+
       setPreviewOpen(true);
     } catch (err) {
       console.error(err);
-      alert("Error generating email");
+      toast.error("Email generation failed");
     } finally {
-      setLoadingId(null);
+      setLoadingEmailId(null);
     }
   };
 
+  // -----------------------
+  // LINKEDIN GENERATION
+  // -----------------------
   const generateLinkedIn = async (lead: any) => {
-    const token = await user.getIdToken();
+    try {
+      setLoadingLinkedInId(lead.id);
+      const token = await user.getIdToken();
 
-    const res = await axios.post(
-      "/api/linkedinMessage",
-      {
-        uid: user.uid,
-        leadId: lead.id,
-        name: lead.name,
-        role: lead.role,
-        company: lead.company,
-        website: lead.website,
-        companySummary: lead.aiSummary || "",
-      },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+      const res = await axios.post(
+        "/api/linkedinMessage",
+        {
+          uid: user.uid,
+          leadId: lead.id,
+          name: lead.name,
+          role: lead.role,
+          company: lead.company,
+          website: lead.website,
+          companySummary: lead.aiSummary || "",
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-    setPreviewData(res.data);
+      setPreviewData({
+        type: "linkedin",
+        connect: res.data.connect,
+        followup: res.data.followup,
+      });
+
+      setPreviewOpen(true);
+    } catch (err) {
+      console.error(err);
+      toast.error("LinkedIn message failed");
+    } finally {
+      setLoadingLinkedInId(null);
+    }
+  };
+
+  // -----------------------
+  // SEQUENCE GENERATION
+  // -----------------------
+  const generateSequence = async (lead: any) => {
+    try {
+      setLoadingSequenceId(lead.id);
+      const token = await user.getIdToken();
+
+      const res = await axios.post(
+        "/api/emailSequence",
+        {
+          uid: user.uid,
+          leadId: lead.id,
+          name: lead.name,
+          role: lead.role,
+          company: lead.company,
+          website: lead.website,
+          companySummary: lead.aiSummary || "",
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setPreviewData({
+        type: "sequence",
+        sequence: res.data,
+      });
+
+      setPreviewOpen(true);
+    } catch (err) {
+      console.error(err);
+      toast.error("Sequence generation failed");
+    } finally {
+      setLoadingSequenceId(null);
+    }
+  };
+
+  // -----------------------
+  // PREVIEW EXISTING
+  // -----------------------
+  const previewExisting = (lead: any) => {
+    setPreviewData({
+      type: "email",
+      subject: lead.subject || "",
+      body: lead.body || "",
+      followUp: lead.followUp || "",
+    });
     setPreviewOpen(true);
   };
 
-  const generateAll = async () => {
-    const notGenerated = leads.filter((l) => !l.subject);
-    if (notGenerated.length === 0) {
-      alert("All leads already have generated emails!");
-      return;
-    }
-
-    setBulkLoading(true);
-    setBulkProgress(0);
-    const token = await user.getIdToken();
-
-    for (let i = 0; i < notGenerated.length; i++) {
-      const lead = notGenerated[i];
-      try {
-        await axios.post(
-          "/api/generateEmail",
-          {
-            leadId: lead.id,
-            uid: user.uid,
-            name: lead.name,
-            company: lead.company,
-            role: lead.role,
-            website: lead.website,
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setBulkProgress(i + 1);
-      } catch (err) {
-        console.error("Bulk generation error:", err);
-      }
-    }
-
-    setBulkLoading(false);
-    alert("Bulk generation complete!");
-  };
-
-  useEffect(() => {
-    const btn = document.getElementById("bulk-generate-btn");
-    if (btn) {
-      btn.onclick = generateAll;
-    }
-  }, [leads, user]);
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-      </div>
-    );
-  }
-
-  if (leads.length === 0) {
-    return (
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertTitle>No leads found!</AlertTitle>
-        <AlertDescription>
-          Upload a CSV file with your leads to get started.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
   return (
     <>
-      {bulkLoading && (
-        <div className="mb-4 text-sm text-muted-foreground">
-          Generating... {bulkProgress}/{leads.filter((l) => !l.subject).length}
-        </div>
-      )}
-      <div className="overflow-x-auto">
-        <Table className="min-w-full">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Company</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-gray-300 bg-white/5">
+              <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Company</th>
+              <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
             {leads.map((lead) => (
-              <TableRow key={lead.id}>
-                <TableCell className="font-medium">{lead.name}</TableCell>
-                <TableCell>{lead.company}</TableCell>
-                <TableCell>{lead.role}</TableCell>
-                <TableCell>
+              <tr
+                key={lead.id}
+                className="border-t border-white/10 hover:bg-white/5 relative"
+              >
+                <td className="px-4 py-4">{lead.name}</td>
+                <td className="px-4 py-4 text-gray-300">{lead.company}</td>
+                <td className="px-4 py-4 text-gray-300">{lead.role}</td>
+
+                <td className="px-4 py-4">
                   {lead.subject ? (
-                    <Badge variant="success">Generated</Badge>
+                    <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400">
+                      Generated
+                    </span>
                   ) : (
-                    <Badge variant="outline">Pending</Badge>
+                    <span className="px-3 py-1 rounded-full bg-white/10 text-gray-300">
+                      Pending
+                    </span>
                   )}
-                </TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => generateLinkedIn(lead)}
-                    className="rounded-full bg-blue-500/20 hover:bg-blue-500/30"
-                  >
-                    LinkedIn
-                  </Button>
-                  {lead.subject ? (
+                </td>
+
+                {/* ACTION BUTTONS */}
+                <td className="px-4 py-4">
+                  <div className="grid grid-cols-3 gap-2">
+
+                    {/* EMAIL */}
+                    {lead.subject ? (
+                      <Button
+                        variant="ghost"
+                        className="w-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          previewExisting(lead);
+                        }}
+                      >
+                        Preview
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          generateEmail(lead);
+                        }}
+                        disabled={loadingEmailId === lead.id}
+                      >
+                        {loadingEmailId === lead.id ? "..." : "Email"}
+                      </Button>
+                    )}
+
+                    {/* LINKEDIN */}
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        generateLinkedIn(lead);
+                      }}
+                      disabled={loadingLinkedInId === lead.id}
+                    >
+                      {loadingLinkedInId === lead.id ? "..." : "LinkedIn"}
+                    </Button>
+
+                    {/* SEQUENCE */}
                     <Button
                       variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setPreviewData(lead);
-                        setPreviewOpen(true);
+                      className="w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        generateSequence(lead);
                       }}
+                      disabled={loadingSequenceId === lead.id}
                     >
-                      <Mail className="mr-2 h-4 w-4" />
-                      Preview
+                      {loadingSequenceId === lead.id ? "..." : "Sequence"}
                     </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={() => generateEmail(lead)}
-                      disabled={loadingId === lead.id}
-                    >
-                      <Zap className="mr-2 h-4 w-4" />
-                      {loadingId === lead.id ? "Generating..." : "Generate"}
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
+
+                  </div>
+                </td>
+
+              </tr>
             ))}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
 
-      {previewOpen && previewData && (
+      {/* DRAWER */}
+      {previewData && (
         <EmailPreviewDrawer
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
-          subject={previewData?.subject}
-          body={previewData?.body}
-          followUp={previewData?.followUp}
+          previewData={previewData}
+          user={user}
         />
       )}
     </>

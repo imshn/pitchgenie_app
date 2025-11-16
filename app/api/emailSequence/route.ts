@@ -1,77 +1,65 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
+import { adminAuth, adminDB } from "@/lib/firebase-admin";
 import OpenAI from "openai";
-import { adminAuth, adminDB } from "../../../lib/firebase-admin";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-function clean(text: string) {
-  return text.replace(/```json/g, "").replace(/```/g, "").trim();
-}
-
 export async function POST(req: Request) {
   try {
-    // Auth
-    const authH = req.headers.get("authorization") || "";
-    const token = authH.replace("Bearer ", "").trim();
+    const auth = req.headers.get("authorization") || "";
+    const token = auth.replace("Bearer ", "").trim();
     const decoded = await adminAuth.verifyIdToken(token);
+    const uid = decoded.uid;
 
-    const { uid, leadId, name, role, company, website, companySummary } =
-      await req.json();
+    const { leadId, name, role, company, website } = await req.json();
 
-    if (decoded.uid !== uid)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const profileSnap = await adminDB
+      .collection("users")
+      .doc(uid)
+      .collection("profile")
+      .doc("main")
+      .get();
 
-    // Prompt
+    const profile = profileSnap.data() || {};
+
     const prompt = `
-Return ONLY JSON:
+Write a 4-step cold email sequence.
 
-{
-  "step1": "",
-  "step2": "",
-  "step3": "",
-  "step4": "",
-  "step5": ""
-}
-
-Write a 5-step cold email sequence for:
+Profile:
+${profile.fullName || ""}, ${profile.position || ""}, ${profile.company || ""}
+Services: ${profile.services || ""}
 
 Lead:
-${name}, ${role}, ${company}
+${name}, ${role}, ${company}, ${website}
 
-Website: ${website}
-
-Company Summary:
-${companySummary}
-
-Write:
-- Step1: Cold email (80–120 words)
-- Step2: Follow-up (short, <80 words)
-- Step3: Value-add email (e.g. insights or idea)
-- Step4: Case-study drop with example result
-- Step5: Breakup email
+Return JSON ONLY:
+{
+  "email1": "",
+  "email2": "",
+  "email3": "",
+  "email4": ""
+}
 `;
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: "You write expert cold outreach sequences." },
-        { role: "user", content: prompt },
-      ],
+      messages: [{ role: "user", content: prompt }],
     });
 
     const raw = completion.choices[0].message?.content || "{}";
-    const cleaned = clean(raw);
-    const output = JSON.parse(cleaned);
+    const sequence = JSON.parse(raw);
 
-    // Save to Firestore
     await adminDB.collection("leads").doc(leadId).update({
-      sequence: output,
+      sequence,
+      updatedAt: Date.now(),
     });
 
-    return NextResponse.json(output);
-  } catch (e: any) {
-    console.log("Sequence error:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return NextResponse.json(sequence);
+  } catch (err) {
+    console.error("SEQUENCE ERROR:", err);
+    return NextResponse.json(
+      { error: "Sequence generation failed" },
+      { status: 500 }
+    );
   }
 }

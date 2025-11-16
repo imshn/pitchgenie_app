@@ -16,6 +16,8 @@ import {
   Menu,
   X,
   FileText,
+  UserPlus,
+  Settings,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -42,9 +44,19 @@ export default function Sidebar() {
       icon: <LayoutDashboard size={18} />,
     },
     {
+      name: "Leads",
+      href: "/leads",
+      icon: <UserPlus size={18} />,
+    },
+    {
       name: "Templates",
       href: "/templates",
       icon: <FileText size={18} />,
+    },
+    {
+      name: "Settings",
+      href: "/settings",
+      icon: <Settings size={18} />,
     },
     {
       name: "Upload CSV",

@@ -1,198 +1,243 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/EmailPreviewDrawer.tsx
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { Dialog, Transition } from "@headlessui/react";
+import { Button } from "@/components/ui/button";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { Button } from "@/components/ui/button";
-
-import SequenceDrawer from "./SequenceDrawer";
-import LinkedInDrawer from "./LinkedInDrawer";
-
-type PreviewData =
-  | { type: "email"; subject: string; body: string; followUp: string }
-  | { type: "linkedin"; connect: string; followup: string }
-  | { type: "sequence"; sequence: Record<string, string> }
-  | null;
+import TemplateDrawer from "./TemplateDrawer";
 
 export default function EmailPreviewDrawer({
   open,
   onClose,
   previewData,
-  user, // firebase user passed from parent (LeadTable)
+  user,
+  lead,
 }: {
   open: boolean;
   onClose: () => void;
-  previewData: PreviewData;
+  previewData: any;
   user: any;
+  lead: any;
 }) {
-  // Guard
-  if (!previewData) return null;
+  const [subject, setSubject] = useState(previewData.subject || "");
+  const [body, setBody] = useState(previewData.body || "");
+  const [follow, setFollow] = useState(previewData.followUp || "");
 
-  // Route to sequence or linkedin drawer modes
-  if (previewData.type === "sequence") {
-  return (
-    <SequenceDrawer
-      open={open}
-      onClose={onClose}
-      sequence={previewData.sequence}
-      user={user}
-    />
-  );
-}
+  const [templateDrawer, setTemplateDrawer] = useState(false);
+  const [templateList, setTemplateList] = useState<any[]>([]);
+  const [checking, setChecking] = useState(false);
+  const [deliverability, setDeliverability] = useState<any>(null);
 
-  if (previewData.type === "linkedin") {
-    return (
-      <LinkedInDrawer
-        open={open}
-        onClose={onClose}
-        connect={previewData.connect}
-        followup={previewData.followup}
-      />
-    );
-  }
-
-  // email mode
-  const { subject, body, followUp } = previewData;
-
-  const saveAsTemplate = async () => {
-    if (!previewData || previewData.type !== "email") {
-      toast.error("Templates can only be saved from Email Preview.");
-      return;
-    }
-
+  // Load templates
+  const openTemplateDrawer = async () => {
     try {
       const token = await user.getIdToken();
+      const res = await axios.get("/api/getTemplates", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      const subject = previewData.subject || "Untitled Template";
-      const body = previewData.body || "";
-      const followUp = previewData.followUp || "";
+      setTemplateList(res.data.templates);
+      setTemplateDrawer(true);
+    } catch (err) {
+      toast.error("Could not load templates");
+    }
+  };
 
-      const fullPrompt = `${subject}\n\n${body}\n\nFollow-up:\n${followUp}`;
+  // Apply template
+  const applyTemplate = (tpl: any) => {
+    let newBody = tpl.body || "";
+    let newSubject = tpl.subject || "";
+    const newFollow = tpl.followUp || "";
 
-      const res = await axios.post(
-        "/api/createTemplate",
+    // Replace placeholders using lead data
+    newBody = newBody
+      .replace(/{{name}}/g, lead.name)
+      .replace(/{{company}}/g, lead.company)
+      .replace(/{{role}}/g, lead.role);
+
+    newSubject = newSubject.replace(/{{name}}/g, lead.name);
+
+    setBody(newBody);
+    setSubject(newSubject);
+    setFollow(newFollow);
+
+    setTemplateDrawer(false);
+    toast.success("Template applied");
+  };
+
+  // Save Template
+  const saveTemplate = async () => {
+    try {
+      const title = window.prompt("Template name:");
+      if (!title) return;
+
+      const token = await user.getIdToken();
+      await axios.post(
+        "/api/saveTemplate",
         {
           uid: user.uid,
-          title: subject,
-          prompt: fullPrompt,
-          type: "email",
+          title,
+          subject,
+          body,
+          followUp: follow,
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      toast.success("Template saved!");
-      console.log("Saved template:", res.data);
-    } catch (error: any) {
-      console.error("Save template error:", error);
-      toast.error("Error saving template");
-    }
-  };
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Copied to clipboard");
+      toast.success("Template saved");
     } catch {
-      toast.error("Copy failed");
+      toast.error("Failed to save template");
     }
   };
 
-  const downloadTxt = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: "text/plain" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
+  // Send email
+  const sendEmail = async () => {
+    try {
+      const token = await user.getIdToken();
+      await axios.post(
+        "/api/sendEmail",
+        {
+          uid: user.uid,
+          leadId: lead.id,
+          subject,
+          body,
+          followUp: follow,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      toast.success("Email sent");
+    } catch (err) {
+      toast.error("Send failed");
+    }
+  };
+
+  // Deliverability Check
+  const checkDeliverability = async () => {
+    try {
+      setChecking(true);
+      const token = await user.getIdToken();
+
+      const res = await axios.post(
+        "/api/deliverabilityCheck",
+        {
+          uid: user.uid,
+          subject,
+          body,
+          followUp: follow,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setDeliverability(res.data);
+      toast.success("Scored");
+    } catch (err) {
+      console.error(err);
+      toast.error("Check failed");
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
-  <Transition.Root show={open} as={Fragment}>
-    <Dialog as="div" className="fixed inset-0 z-50" onClose={onClose}>
-      
-      {/* BACKDROP */}
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-xl transition-opacity" />
+    <Transition.Root show={open} as={Fragment}>
+      <Dialog onClose={onClose} className="fixed inset-0 z-50">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xl" />
 
-      {/* PANEL */}
-      <div className="fixed right-0 top-0 h-full w-[480px] bg-[#111214] border-l border-white/10 shadow-2xl">
-        <div className="flex flex-col h-full">
+        <div className="fixed right-0 top-0 h-full w-[500px] bg-[#121316] border-l border-white/10 shadow-2xl p-6 overflow-y-auto">
 
-          {/* HEADER */}
-          <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-white">{subject}</h1>
-              <p className="text-xs text-gray-400 mt-1">Cold Email Preview</p>
+          <h2 className="text-xl font-semibold mb-4">
+            {previewData.type === "sequence"
+              ? "Email Sequence"
+              : previewData.type === "linkedin"
+              ? "LinkedIn Messages"
+              : "Generated Email"}
+          </h2>
+
+          {/* SUBJECT */}
+          {previewData.type === "email" && (
+            <div className="mb-6">
+              <label className="text-sm text-gray-400">Subject</label>
+              <input
+                className="w-full bg-white/5 border border-white/10 p-2 rounded-lg text-gray-200 mt-1"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              />
             </div>
-            <Button variant="ghost" onClick={onClose}>Close</Button>
+          )}
+
+          {/* BODY */}
+          <div className="mb-6">
+            <label className="text-sm text-gray-400">Body</label>
+            <textarea
+              className="w-full min-h-[180px] bg-white/5 border border-white/10 p-3 rounded-lg text-gray-200 mt-1"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
           </div>
 
-          {/* CONTENT */}
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
-            
-            {/* SUBJECT */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-300 mb-2">Subject</h2>
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-gray-100">
-                {subject}
-              </div>
-            </section>
-
-            {/* BODY */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-300 mb-2">Email Body</h2>
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-gray-100 leading-6">
-                {body}
-              </div>
-
-              <div className="mt-3 flex gap-3">
-                <Button variant="outline" onClick={() => copyToClipboard(body)}>Copy Body</Button>
-                <Button variant="outline" onClick={() => downloadTxt("body.txt", body)}>Download</Button>
-              </div>
-            </section>
-
-            {/* FOLLOW-UP */}
-            <section>
-              <h2 className="text-sm font-semibold text-gray-300 mb-2">Follow-up</h2>
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 whitespace-pre-wrap text-gray-100 leading-6">
-                {followUp}
-              </div>
-
-              <div className="mt-3 flex gap-3">
-                <Button variant="outline" onClick={() => copyToClipboard(followUp)}>Copy Follow-up</Button>
-                <Button variant="outline" onClick={() => downloadTxt("followup.txt", followUp)}>Download</Button>
-              </div>
-            </section>
-
-          </div>
-
-          {/* FOOTER */}
-          <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
-            <div className="text-sm text-gray-400">Actions</div>
-            <div className="flex gap-3">
-              <Button onClick={() => copyToClipboard(`${subject}\n\n${body}`)}>Copy All</Button>
-              <Button onClick={() => downloadTxt("email_full.txt", `${subject}\n\n${body}\n\nFollow-up:\n${followUp}`)}>
-                Download All
-              </Button>
-
-              {/* Save Template only for emails */}
-              {previewData.type === "email" && (
-                <Button variant="secondary" onClick={saveAsTemplate}>
-                  Save Template
-                </Button>
-              )}
+          {/* FOLLOW UP */}
+          {previewData.type === "email" && (
+            <div className="mb-6">
+              <label className="text-sm text-gray-400">Follow-up</label>
+              <textarea
+                className="w-full min-h-[120px] bg-white/5 border border-white/10 p-3 rounded-lg text-gray-200 mt-1"
+                value={follow}
+                onChange={(e) => setFollow(e.target.value)}
+              />
             </div>
+          )}
+
+          {/* ACTIONS */}
+          <div className="flex flex-col gap-3">
+            <Button onClick={sendEmail} className="w-full bg-purple-600">
+              Send Email
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={checkDeliverability}
+              className="w-full"
+              disabled={checking}
+            >
+              {checking ? "Checking..." : "Check Deliverability"}
+            </Button>
+
+            <Button variant="outline" onClick={openTemplateDrawer}>
+              Apply Template
+            </Button>
+
+            <Button variant="outline" onClick={saveTemplate}>
+              Save as Template
+            </Button>
+
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
           </div>
 
+          {/* Deliverability Score */}
+          {deliverability && (
+            <div className="mt-6 p-4 bg-white/5 border border-white/10 rounded-lg">
+              <h3 className="text-gray-300 font-semibold mb-2">
+                Deliverability Score:
+              </h3>
+              <p className="text-purple-300 text-2xl">{deliverability.score}/100</p>
+              <p className="text-gray-400 mt-2">{deliverability.notes}</p>
+            </div>
+          )}
         </div>
-      </div>
-    </Dialog>
-  </Transition.Root>
-);
 
+        {/* TEMPLATE DRAWER */}
+        <TemplateDrawer
+          open={templateDrawer}
+          onClose={() => setTemplateDrawer(false)}
+          templates={templateList}
+          onSelect={applyTemplate}
+        />
+      </Dialog>
+    </Transition.Root>
+  );
 }

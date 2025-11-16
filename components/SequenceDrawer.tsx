@@ -1,18 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/SequenceDrawer.tsx
 "use client";
 
 import { Fragment } from "react";
 import { Dialog, Transition } from "@headlessui/react";
-import { Button } from "@/components/ui/button";
-import toast from "react-hot-toast";
 import axios from "axios";
+import toast from "react-hot-toast";
+import { Button } from "@/components/ui/button";
 
 export default function SequenceDrawer({
   open,
   onClose,
   sequence,
-  user, // REQUIRED for saving template
+  user,
 }: {
   open: boolean;
   onClose: () => void;
@@ -25,16 +24,15 @@ export default function SequenceDrawer({
     try {
       const token = await user.getIdToken();
 
-      // Convert sequence object to a formatted string
       const formatted = Object.entries(sequence)
-        .map(([key, value]) => `${key.toUpperCase()}:\n${value}\n`)
+        .map(([k, v]) => `${k.toUpperCase()}:\n${v}\n`)
         .join("\n");
 
-      const res = await axios.post(
+      await axios.post(
         "/api/createTemplate",
         {
           uid: user.uid,
-          title: "Email Sequence Template",
+          title: "Sequence Template",
           prompt: formatted,
           type: "sequence",
         },
@@ -42,47 +40,59 @@ export default function SequenceDrawer({
       );
 
       toast.success("Sequence template saved!");
-      console.log("Sequence template saved:", res.data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Error saving template");
+    } catch {
+      toast.error("Save failed");
     }
   };
 
   return (
     <Transition.Root show={open} as={Fragment}>
       <Dialog className="fixed inset-0 z-50" onClose={onClose}>
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
 
-        <div className="fixed right-0 top-0 h-full w-[480px] bg-[#0F1115] border-l border-white/6 p-6 overflow-y-auto">
-          <h1 className="text-xl font-bold mb-6">Email Sequence</h1>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xl" />
 
-          {/* Sequence Steps */}
-          {Object.entries(sequence).map(([key, value]: any) => (
-            <div key={key} className="mb-6">
-              <h2 className="text-sm text-purple-300 font-semibold uppercase mb-2">
-                {key}
-              </h2>
-              <div className="text-sm text-white/80 whitespace-pre-wrap bg-white/5 p-4 rounded-xl border border-white/10">
-                {value}
+        <div className="fixed right-0 top-0 h-full w-[480px] bg-[#111214] border-l border-white/10 shadow-2xl">
+          <div className="flex flex-col h-full">
+
+            {/* HEADER */}
+            <header className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <h1 className="text-xl text-white font-semibold">Email Sequence</h1>
+                <p className="text-xs text-gray-400 mt-1">3–5 Step Sequence</p>
               </div>
-            </div>
-          ))}
+              <Button variant="ghost" onClick={onClose}>Close</Button>
+            </header>
 
-          {/* Save Template Button */}
-          <Button
-            className="w-full mt-6"
-            variant="secondary"
-            onClick={saveSequenceTemplate}
-          >
-            Save Sequence Template
-          </Button>
+            {/* CONTENT */}
+            <main className="flex-1 px-6 py-6 overflow-y-auto space-y-8">
+              {Object.entries(sequence).map(([key, value]) => (
+                <section key={key}>
+                  <h2 className="text-sm text-purple-300 font-semibold uppercase mb-2">
+                    {key}
+                  </h2>
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-white/90 whitespace-pre-wrap leading-6">
+                    {value}
+                  </div>
+                </section>
+              ))}
+            </main>
 
-          {/* Close Button */}
-          <Button className="w-full mt-3" onClick={onClose}>
-            Close
-          </Button>
+            {/* FOOTER */}
+            <footer className="px-6 py-4 border-t border-white/10 flex items-center justify-between">
+              <span className="text-sm text-gray-400">Actions</span>
+              <div className="flex gap-3">
+                <Button variant="secondary" onClick={saveSequenceTemplate}>
+                  Save Template
+                </Button>
+                <Button variant="outline" onClick={onClose}>
+                  Close
+                </Button>
+              </div>
+            </footer>
+
+          </div>
         </div>
+
       </Dialog>
     </Transition.Root>
   );

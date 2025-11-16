@@ -1,21 +1,20 @@
+// app/layout.tsx
+import "@/app/globals.css";
 import Sidebar from "@/components/SideNav";
-import { Toaster } from "react-hot-toast";
-import "./globals.css";
+import Toaster from "@/components/ui/toaster";
+export const metadata = {
+  title: "PitchGenie",
+  description: "AI cold email builder",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen">
-      
-
-        {/* Sidebar */}
+    <html lang="en">
+      <body className="min-h-screen flex">
         <Sidebar />
-
-        {/* Page content */}
-        <main className="ml-32 w-full min-h-screen">
-          {children}
+        <main className="flex-1 ml-64 p-8">
+          <div className="max-w-[1400px] mx-auto">{children}</div>
         </main>
-
         <Toaster />
       </body>
     </html>

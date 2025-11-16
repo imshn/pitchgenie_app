@@ -1,61 +1,50 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// app/login/page.tsx
 "use client";
-
 import { useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { auth } from "@/lib/firebase";
+import toast from "react-hot-toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const login = async () => {
+  const handle = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
       setLoading(true);
       await signInWithEmailAndPassword(auth, email, password);
-      window.location.href = "/dashboard";
+      toast.success("Logged in");
+      router.push("/dashboard");
     } catch (err: any) {
-      alert(err.message);
+      console.error(err);
+      toast.error(err.message || "Login failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-center">Login</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input
-            placeholder="Email"
-            type="email"
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Input
-            placeholder="Password"
-            type="password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
+    <div className="min-h-[70vh] flex items-center justify-center">
+      <div className="w-full max-w-md glass p-8 rounded-2xl">
+        <h2 className="text-2xl font-bold mb-2">Welcome back</h2>
+        <p className="text-sm text-gray-300 mb-6">Login to continue to PitchGenie</p>
 
-          <Button className="w-full" onClick={login} disabled={loading}>
-            {loading ? "Loading..." : "Login"}
-          </Button>
+        <form onSubmit={handle} className="space-y-4">
+          <input className="w-full p-3 rounded-md bg-transparent border border-white/6" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} />
+          <input className="w-full p-3 rounded-md bg-transparent border border-white/6" type="password" placeholder="Password" value={password} onChange={(e)=>setPassword(e.target.value)} />
 
-          <p className="text-sm text-center mt-2">
-            Don’t have an account?{" "}
-            <a href="/signup" className="underline">
-              Sign up
-            </a>
-          </p>
-        </CardContent>
-      </Card>
+          <button type="submit" className="w-full p-3 rounded-md bg-gradient-to-r from-purple-600 to-pink-500 font-semibold" disabled={loading}>
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+
+        <p className="text-sm text-gray-400 mt-4">No account? <a href="/signup" className="text-white underline">Sign up</a></p>
+      </div>
     </div>
   );
 }

@@ -1,71 +1,60 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// app/signup/page.tsx
 "use client";
-
 import { useState } from "react";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 
 export default function SignupPage() {
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const [loading, setLoading]   = useState(false);
 
-  const signup = async () => {
+  const ensureUserDoc = async (user: any) => {
+    const ref = doc(db, "users", user.uid);
+    await setDoc(ref, { fullName: fullName || user.email, email: user.email, plan: "free", credits: 50, createdAt: Date.now() }, { merge: true });
+  };
+
+  const signup = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
       setLoading(true);
-
-      const user = await createUserWithEmailAndPassword(auth, email, password);
-
-      // Create user doc with default credits
-      await setDoc(doc(db, "users", user.user.uid), {
-        email,
-        credits: 20, // default free credits
-        plan: "free",
-        createdAt: new Date().toISOString(),
-      });
-
-      window.location.href = "/dashboard";
+      const res = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(res.user, { displayName: fullName });
+      await ensureUserDoc(res.user);
+      toast.success("Account created");
+      router.push("/dashboard");
     } catch (err: any) {
-      alert(err.message);
+      console.error(err);
+      toast.error(err.message || "Sign up failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-center">Sign Up</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input
-            placeholder="Email"
-            type="email"
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Input
-            placeholder="Password"
-            type="password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
+    <div className="min-h-[70vh] flex items-center justify-center">
+      <div className="w-full max-w-md glass p-8 rounded-2xl">
+        <h2 className="text-2xl font-bold mb-2">Create account</h2>
+        <p className="text-sm text-gray-300 mb-6">Start using PitchGenie</p>
 
-          <Button className="w-full" onClick={signup} disabled={loading}>
-            {loading ? "Creating..." : "Sign Up"}
-          </Button>
+        <form onSubmit={signup} className="space-y-4">
+          <input className="w-full p-3 rounded-md bg-transparent border border-white/6" placeholder="Full name" value={fullName} onChange={(e)=>setFullName(e.target.value)} />
+          <input className="w-full p-3 rounded-md bg-transparent border border-white/6" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} />
+          <input className="w-full p-3 rounded-md bg-transparent border border-white/6" type="password" placeholder="Password" value={password} onChange={(e)=>setPassword(e.target.value)} />
 
-          <p className="text-sm text-center mt-2">
-            Already have an account?{" "}
-            <a href="/login" className="underline">
-              Login
-            </a>
-          </p>
-        </CardContent>
-      </Card>
+          <button type="submit" className="w-full p-3 rounded-md bg-gradient-to-r from-purple-600 to-pink-500 font-semibold" disabled={loading}>
+            {loading ? "Creating..." : "Create account"}
+          </button>
+        </form>
+
+        <p className="text-sm text-gray-400 mt-4">Already have an account? <a href="/login" className="text-white underline">Sign in</a></p>
+      </div>
     </div>
   );
 }

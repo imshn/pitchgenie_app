@@ -25,6 +25,7 @@
     "nodemailer": "^7.0.10",
     "openai": "^6.9.0",
     "papaparse": "^5.5.3",
+    "razorpay": "^2.9.6",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-hot-toast": "^2.6.0",

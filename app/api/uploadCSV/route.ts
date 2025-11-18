@@ -3,15 +3,26 @@ import { NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
 import Papa from "papaparse";
 
+export const runtime = "nodejs"; // ⬅️ CRITICAL FIX
+
 export async function POST(req: Request) {
+  console.log("🔥 HIT /api/uploadCSV");
+
   try {
     // ---------------------
     // AUTH
     // ---------------------
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "");
+
+    if (!token) {
+      console.log("❌ Missing auth token");
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const decoded = await adminAuth.verifyIdToken(token);
     const uid = decoded.uid;
+    console.log("✅ UID:", uid);
 
     // ---------------------
     // PARSE CSV
@@ -20,41 +31,59 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File;
 
     if (!file) {
+      console.log("❌ No file received");
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
     const text = await file.text();
-    const parsed = Papa.parse(text, { header: true });
+    const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
 
     const rows = parsed.data as any[];
+    console.log("📄 Parsed rows:", rows.length);
 
     // ---------------------
     // INSERT LEADS
     // ---------------------
+    let inserted = 0;
+
     for (const row of rows) {
-      if (!row.name || !row.email) continue;
+      const name = (row.name || row.Name || "").trim();
+      const email = (row.email || row.Email || "").trim();
+
+      if (!row.name?.trim() || !row.email?.trim()) {
+        return NextResponse.json(
+          {
+            error:
+              "CSV contains rows missing a required field (name or email).",
+            example: { required: ["name", "email"], row },
+          },
+          { status: 400 }
+        );
+      }
 
       await adminDB.collection("leads").add({
         uid,
-        name: row.name?.trim() || "",
-        company: row.company?.trim() || "",
-        role: row.role?.trim() || "",
-        email: row.email?.trim() || "",     // ✅ FIXED: SAVE EMAIL
-        website: row.website?.trim() || "",
+        name,
+        company: row.company?.trim() || row.Company?.trim() || "",
+        role: row.role?.trim() || row.Role?.trim() || "",
+        email,
+        website: row.website?.trim() || row.Website?.trim() || "",
         createdAt: new Date().toISOString(),
-
-        // empty optional values
         subject: "",
         body: "",
         followUp: "",
         persona: null,
         industry: null,
       });
+
+      inserted++;
     }
 
-    return NextResponse.json({ success: true });
+    console.log(`✅ Inserted ${inserted} / ${rows.length} leads for ${uid}`);
+
+    return NextResponse.json({ success: true, inserted });
   } catch (e) {
-    console.error("CSV UPLOAD ERROR:", e);
+    console.error("❌ CSV UPLOAD ERROR:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

@@ -5,13 +5,8 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-
-import { User, Building2, Info, Globe,  } from "lucide-react";
+import { User, Building2, Globe, PenTool } from 'lucide-react';
+import toast from "react-hot-toast";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
@@ -31,17 +26,11 @@ export default function SettingsPage() {
     valueProposition: "",
   });
 
-  // -----------------------
-  // AUTH WATCHER
-  // -----------------------
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
   }, []);
 
-  // -----------------------
-  // LOAD PROFILE
-  // -----------------------
   useEffect(() => {
     const load = async () => {
       if (!user) return;
@@ -67,10 +56,10 @@ export default function SettingsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      alert("Profile updated successfully!");
+      toast.success("Profile updated successfully!");
     } catch (err) {
       console.error(err);
-      alert("Error updating profile.");
+      toast.error("Error updating profile.");
     } finally {
       setSaving(false);
     }
@@ -78,188 +67,162 @@ export default function SettingsPage() {
 
   if (!user)
     return (
-      <div className="p-6 text-gray-300 text-lg">
-        Please log in to continue.
-      </div>
+      <main className="pl-64 min-h-screen bg-background p-8 flex items-center justify-center">
+        <p className="text-muted-foreground text-lg">Please log in to continue.</p>
+      </main>
     );
 
   if (loading)
-    return <div className="p-6 text-gray-300 text-lg">Loading profile…</div>;
+    return (
+      <main className="pl-64 min-h-screen bg-background p-8 flex items-center justify-center">
+        <p className="text-muted-foreground text-lg">Loading profile…</p>
+      </main>
+    );
 
-  // -----------------------
-  // UI COMPONENT
-  // -----------------------
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-10 animate-in fade-in duration-300">
+    <main className="pl-64 min-h-screen bg-background p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Your Profile</h1>
+          <p className="text-muted-foreground">Customize your information for better AI personalization</p>
+        </div>
 
-      {/* HEADER */}
-      <div className="rounded-3xl p-10 bg-gradient-to-br from-purple-700/10 via-purple-500/5 to-black border border-white/10 shadow-xl">
-        <h1 className="text-4xl font-bold tracking-tight">Your Profile</h1>
-        <p className="text-gray-400 mt-2 text-lg">
-          Improve AI personalization by describing yourself and your business.
-        </p>
-      </div>
-
-      {/* GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Personal Info */}
-        <Card className="bg-white/5 border-white/10 backdrop-blur-xl rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <User size={20} /> Personal Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-
-            <div>
-              <label className="text-sm text-gray-400">Full Name</label>
-              <Input
-                className="mt-1 bg-black/20 border-white/10"
-                value={profile.fullName}
-                onChange={(e) =>
-                  setProfile({ ...profile, fullName: e.target.value })
-                }
-              />
+        <div className="space-y-6">
+          {/* Personal Info */}
+          <div className="glass border border-border rounded-lg p-6 shadow-premium">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-primary/15 rounded-lg">
+                <User className="w-5 h-5 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Personal Details</h2>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">Gender (optional)</label>
-              <Input
-                className="mt-1 bg-black/20 border-white/10"
-                value={profile.gender}
-                onChange={(e) =>
-                  setProfile({ ...profile, gender: e.target.value })
-                }
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Full Name</label>
+                <input
+                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
+                  value={profile.fullName}
+                  onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Gender (optional)</label>
+                <input
+                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
+                  value={profile.gender}
+                  onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">About You</label>
-              <Textarea
-                rows={4}
-                className="mt-1 bg-black/20 border-white/10"
+            <div className="mt-6">
+              <label className="text-sm font-medium text-foreground block mb-2">About You</label>
+              <textarea
+                rows={3}
+                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none resize-none"
                 value={profile.about}
-                onChange={(e) =>
-                  setProfile({ ...profile, about: e.target.value })
-                }
+                onChange={(e) => setProfile({ ...profile, about: e.target.value })}
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Company Info */}
-        <Card className="bg-white/5 border-white/10 backdrop-blur-xl rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Building2 size={20} /> Company Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-
-            <div>
-              <label className="text-sm text-gray-400">Company</label>
-              <Input
-                className="mt-1 bg-black/20 border-white/10"
-                value={profile.company}
-                onChange={(e) =>
-                  setProfile({ ...profile, company: e.target.value })
-                }
-              />
+          {/* Company Info */}
+          <div className="glass border border-border rounded-lg p-6 shadow-premium">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-primary/15 rounded-lg">
+                <Building2 className="w-5 h-5 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Company Details</h2>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">Position</label>
-              <Input
-                className="mt-1 bg-black/20 border-white/10"
-                value={profile.position}
-                onChange={(e) =>
-                  setProfile({ ...profile, position: e.target.value })
-                }
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Company</label>
+                <input
+                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
+                  value={profile.company}
+                  onChange={(e) => setProfile({ ...profile, company: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Position</label>
+                <input
+                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
+                  value={profile.position}
+                  onChange={(e) => setProfile({ ...profile, position: e.target.value })}
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">Your Services</label>
-              <Textarea
+            <div className="mt-6">
+              <label className="text-sm font-medium text-foreground block mb-2">Your Services</label>
+              <textarea
                 rows={3}
-                className="mt-1 bg-black/20 border-white/10"
+                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none resize-none"
                 value={profile.services}
-                onChange={(e) =>
-                  setProfile({ ...profile, services: e.target.value })
-                }
+                onChange={(e) => setProfile({ ...profile, services: e.target.value })}
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Online Presence */}
-        <Card className="bg-white/5 border-white/10 backdrop-blur-xl rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Globe size={20} /> Online Presence
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-
-            <div>
-              <label className="text-sm text-gray-400">Website</label>
-              <Input
-                className="mt-1 bg-black/20 border-white/10"
-                value={profile.website}
-                onChange={(e) =>
-                  setProfile({ ...profile, website: e.target.value })
-                }
-              />
+          {/* Online Presence */}
+          <div className="glass border border-border rounded-lg p-6 shadow-premium">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-primary/15 rounded-lg">
+                <Globe className="w-5 h-5 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Online Presence</h2>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">LinkedIn</label>
-              <Input
-                className="mt-1 bg-black/20 border-white/10"
-                value={profile.linkedin}
-                onChange={(e) =>
-                  setProfile({ ...profile, linkedin: e.target.value })
-                }
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">Website</label>
+                <input
+                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
+                  value={profile.website}
+                  onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-2">LinkedIn</label>
+                <input
+                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
+                  value={profile.linkedin}
+                  onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">
-                Value Proposition (AI inserts this in emails)
-              </label>
-              <Textarea
+            <div className="mt-6">
+              <label className="text-sm font-medium text-foreground block mb-2">Value Proposition (AI uses this)</label>
+              <textarea
                 rows={3}
-                className="mt-1 bg-black/20 border-white/10"
+                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none resize-none"
                 value={profile.valueProposition}
-                onChange={(e) =>
-                  setProfile({
-                    ...profile,
-                    valueProposition: e.target.value,
-                  })
-                }
+                onChange={(e) => setProfile({ ...profile, valueProposition: e.target.value })}
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Tone Settings */}
-        <Card className="bg-white/5 border-white/10 backdrop-blur-xl rounded-2xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Info size={20} /> Writing Preferences
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
+          {/* Writing Preferences */}
+          <div className="glass border border-border rounded-lg p-6 shadow-premium">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-primary/15 rounded-lg">
+                <PenTool className="w-5 h-5 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Writing Preferences</h2>
+            </div>
 
             <div>
-              <label className="text-sm text-gray-400">Default Email Tone</label>
+              <label className="text-sm font-medium text-foreground block mb-2">Default Email Tone</label>
               <select
-                className="mt-1 w-full bg-black/20 border border-white/10 rounded-xl p-2 text-white"
+                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
                 value={profile.personaTone}
-                onChange={(e) =>
-                  setProfile({ ...profile, personaTone: e.target.value })
-                }
+                onChange={(e) => setProfile({ ...profile, personaTone: e.target.value })}
               >
                 <option value="professional">Professional</option>
                 <option value="friendly">Friendly</option>
@@ -269,21 +232,19 @@ export default function SettingsPage() {
                 <option value="long">Detailed</option>
               </select>
             </div>
+          </div>
 
-          </CardContent>
-        </Card>
+          <div className="flex justify-end pt-4">
+            <button
+              onClick={saveProfile}
+              disabled={saving}
+              className="px-6 py-3 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 border border-primary/30 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? "Saving..." : "Save Profile"}
+            </button>
+          </div>
+        </div>
       </div>
-
-      {/* SAVE BUTTON */}
-      <div className="pt-4 flex justify-end">
-        <Button
-          className="px-8 py-3 text-lg rounded-xl"
-          onClick={saveProfile}
-          disabled={saving}
-        >
-          {saving ? "Saving…" : "Save Profile"}
-        </Button>
-      </div>
-    </div>
+    </main>
   );
 }

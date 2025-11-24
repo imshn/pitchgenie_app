@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
 import Papa from "papaparse";
+import { logEvent } from "@/lib/analytics-server";
 
 export const runtime = "nodejs"; // ⬅️ CRITICAL FIX
 
@@ -80,6 +81,12 @@ export async function POST(req: Request) {
     }
 
     console.log(`✅ Inserted ${inserted} / ${rows.length} leads for ${uid}`);
+
+    // Log analytics event for lead import
+    await logEvent(uid, {
+      type: "lead_imported",
+      meta: { count: inserted },
+    });
 
     return NextResponse.json({ success: true, inserted });
   } catch (e) {

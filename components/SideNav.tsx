@@ -1,68 +1,107 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, FileText, UploadCloud, CreditCard, User, Settings, LogOut } from 'lucide-react';
+import { usePathname } from "next/navigation";
+import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { CreditDisplay } from "@/components/credits/CreditDisplay";
+import { UpgradePlanModal } from "@/components/credits/UpgradePlanModal";
+import { PlanType } from "@/lib/credit-types";
 
-const items = [
+const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Leads", href: "/leads", icon: Users },
+  { name: "Upload", href: "/upload", icon: Upload },
   { name: "Templates", href: "/templates", icon: FileText },
-  { name: "Upload CSV", href: "/upload", icon: UploadCloud },
-  { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Profile", href: "/profile", icon: User },
-  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export default function Sidebar() {
-  const path = usePathname();
+export function SideNav() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<PlanType>("free");
+
+  useEffect(() => {
+    const unsubAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const unsubDoc = onSnapshot(doc(db, "users", user.uid), (doc) => {
+          if (doc.exists()) {
+            setCurrentPlan(doc.data().plan || "free");
+          }
+        });
+        return () => unsubDoc();
+      }
+    });
+    return () => unsubAuth();
+  }, []);
+
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col z-40 glass border-r border-border p-6">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary">
-          PG
-        </div>
-        <div>
-          <h1 className="text-base font-semibold text-foreground">PitchGenie</h1>
-          <p className="text-xs text-muted-foreground">AI Outreach</p>
-        </div>
+    <div className="flex h-full flex-col gap-2">
+      <div className="flex h-16 items-center border-b border-border px-6">
+        <Link href="/" className="flex items-center gap-2 font-bold text-xl">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Zap className="h-5 w-5" />
+          </div>
+          <span className="bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+            PitchGenie
+          </span>
+        </Link>
       </div>
 
-      <nav className="flex-1 space-y-1">
-        {items.map((it) => {
-          const Icon = it.icon;
-          const active = path === it.href;
-          return (
-            <Link
-              key={it.href}
-              href={it.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                active
-                  ? "bg-primary/15 text-primary border border-primary/30 shadow-glow"
-                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground border border-transparent"
-              }`}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{it.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="flex-1 overflow-auto py-4 px-4">
+        <nav className="grid gap-1">
+          <div className="mb-4 px-2 text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+            Main Menu
+          </div>
+          {navItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  isActive
+                    ? "bg-primary/10 text-primary shadow-sm"
+                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                )}
+              >
+                <item.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+                {item.name}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
 
-      <div className="border-t border-border pt-4">
-        <button
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 border border-transparent hover:border-destructive/20"
+      <div className="mt-auto p-4 border-t border-border space-y-3">
+        <CreditDisplay onUpgradeClick={() => setShowUpgradeModal(true)} />
+
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10"
           onClick={() => {
-            import("firebase/auth").then(({ getAuth, signOut }) => {
-              const auth = getAuth();
-              signOut(auth).then(() => (window.location.href = "/login"));
-            });
+            auth.signOut();
+            router.push("/login");
           }}
         >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
-          Logout
-        </button>
+          <LogOut className="mr-2 h-4 w-4" />
+          Log Out
+        </Button>
       </div>
-    </aside>
+
+      <UpgradePlanModal
+        open={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentPlan={currentPlan}
+      />
+    </div>
   );
 }

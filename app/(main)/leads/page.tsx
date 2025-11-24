@@ -1,21 +1,23 @@
+"use client";
+
 import AuthGuard from "@/components/AuthGuard";
 import LeadTable from "@/components/LeadTable";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Plus, Download } from "lucide-react";
 
 export default function LeadsPage() {
   return (
     <AuthGuard>
-      <main className="pl-64 min-h-screen bg-background p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">Leads</h1>
-            <p className="text-muted-foreground">Manage and track all your outreach leads</p>
-          </div>
-
-          <div className="rounded-lg border border-border shadow-premium overflow-hidden">
-            <LeadTable />
-          </div>
+      <div className="flex flex-col h-full">
+        <PageHeader 
+          title="Leads" 
+          description="Manage and track your potential customers."
+        />
+        <div className="flex-1 p-6 overflow-auto">
+          <LeadTable />
         </div>
-      </main>
+      </div>
     </AuthGuard>
   );
 }

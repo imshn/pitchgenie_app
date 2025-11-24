@@ -2,6 +2,7 @@
 // app/api/credits/use/route.ts
 import { NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { logEvent } from "@/lib/analytics-server";
 
 export async function POST(req: Request) {
   try {
@@ -34,6 +35,12 @@ export async function POST(req: Request) {
       }
 
       tx.update(userRef, { credits: current - cost });
+    });
+
+    // Log analytics event for credits deducted
+    await logEvent(uid, {
+      type: "credits_deducted",
+      cost,
     });
 
     return NextResponse.json({ success: true });

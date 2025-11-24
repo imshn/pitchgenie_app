@@ -1,30 +1,52 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-"use client";
-
-import { Fragment } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { X, Save } from 'lucide-react';
+import { X, Save, FilePlus } from 'lucide-react';
+import { db } from "@/lib/firebase";
+import { doc, updateDoc } from "firebase/firestore";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function SequenceDrawer({
   open,
   onClose,
   sequence,
   user,
+  leadId,
 }: {
   open: boolean;
   onClose: () => void;
   sequence: Record<string, string>;
   user: any;
+  leadId?: string;
 }) {
+  const [editedSequence, setEditedSequence] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setEditedSequence(sequence || {});
+  }, [sequence]);
+
   if (!sequence) return null;
+
+  const handleSave = async () => {
+    if (!leadId) return;
+    try {
+      await updateDoc(doc(db, "leads", leadId), {
+        sequence: editedSequence,
+        updatedAt: Date.now(),
+      });
+      toast.success("Sequence updated");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to update sequence");
+    }
+  };
 
   const saveSequenceTemplate = async () => {
     try {
       const token = await user.getIdToken();
 
-      const formatted = Object.entries(sequence)
+      const formatted = Object.entries(editedSequence)
         .map(([k, v]) => `${k.toUpperCase()}:\n${v}\n`)
         .join("\n");
 
@@ -68,7 +90,7 @@ export default function SequenceDrawer({
 
           {/* Content */}
           <main className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-            {Object.entries(sequence).map(([key, value], index) => (
+            {Object.entries(editedSequence).map(([key, value], index) => (
               <section key={key}>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/15 border border-primary/30">
@@ -78,25 +100,36 @@ export default function SequenceDrawer({
                     {key}
                   </h2>
                 </div>
-                <div className="p-4 bg-secondary/40 border border-border rounded-lg text-foreground text-sm leading-relaxed whitespace-pre-wrap">
-                  {value}
-                </div>
+                <Textarea
+                  value={value}
+                  onChange={(e) => setEditedSequence({ ...editedSequence, [key]: e.target.value })}
+                  className="bg-secondary/40 min-h-[150px]"
+                />
               </section>
             ))}
           </main>
 
           {/* Footer */}
-          <footer className="sticky bottom-0 border-t border-border bg-background/80 backdrop-blur-sm px-6 py-4 flex gap-3">
+          <footer className="sticky bottom-0 border-t border-border bg-background/80 backdrop-blur-sm px-6 py-4 flex gap-3 flex-wrap">
+            {leadId && (
+              <button 
+                onClick={handleSave}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 border border-primary/30 transition-colors duration-150 flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Save Changes
+              </button>
+            )}
             <button 
               onClick={saveSequenceTemplate}
-              className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 border border-primary/30 transition-colors duration-150 flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 rounded-lg text-sm font-medium text-foreground bg-secondary/60 hover:bg-secondary border border-border transition-colors duration-150 flex items-center justify-center gap-2"
             >
-              <Save className="w-4 h-4" />
+              <FilePlus className="w-4 h-4" />
               Save Template
             </button>
             <button 
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-foreground bg-secondary/60 hover:bg-secondary border border-border transition-colors duration-150"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-foreground bg-secondary/60 hover:bg-secondary border border-border transition-colors duration-150 ml-auto"
             >
               Close
             </button>

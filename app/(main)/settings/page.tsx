@@ -1,12 +1,18 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { User, Building2, Globe, PenTool } from 'lucide-react';
+import { User, Building2, Globe, PenTool, Loader2 } from 'lucide-react';
 import toast from "react-hot-toast";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
@@ -35,13 +41,18 @@ export default function SettingsPage() {
     const load = async () => {
       if (!user) return;
 
-      const token = await user.getIdToken();
-      const res = await axios.get("/api/profile/get", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      try {
+        const token = await user.getIdToken();
+        const res = await axios.get("/api/profile/get", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-      if (res.data.profile) setProfile(res.data.profile);
-      setLoading(false);
+        if (res.data.profile) setProfile(res.data.profile);
+      } catch (error) {
+        console.error("Failed to load profile", error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     load();
@@ -65,186 +76,191 @@ export default function SettingsPage() {
     }
   };
 
-  if (!user)
+  if (loading) {
     return (
-      <main className="pl-64 min-h-screen bg-background p-8 flex items-center justify-center">
-        <p className="text-muted-foreground text-lg">Please log in to continue.</p>
-      </main>
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="animate-spin w-12 h-12 text-primary" />
+      </div>
     );
+  }
 
-  if (loading)
+  if (!user) {
     return (
-      <main className="pl-64 min-h-screen bg-background p-8 flex items-center justify-center">
-        <p className="text-muted-foreground text-lg">Loading profile…</p>
-      </main>
+      <div className="flex flex-col items-center justify-center h-screen space-y-4">
+        <p className="text-lg">Please sign in to view settings.</p>
+      </div>
     );
+  }
 
   return (
-    <main className="pl-64 min-h-screen bg-background p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Your Profile</h1>
-          <p className="text-muted-foreground">Customize your information for better AI personalization</p>
-        </div>
+    <div className="flex flex-col h-full">
+      <PageHeader 
+        title="Settings" 
+        description="Customize your profile and AI preferences."
+      >
+        <Button onClick={saveProfile} disabled={saving}>
+          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Save Changes
+        </Button>
+      </PageHeader>
 
-        <div className="space-y-6">
+      <div className="flex-1 p-6 overflow-auto">
+        <div className="max-w-4xl mx-auto space-y-6">
+          
           {/* Personal Info */}
-          <div className="glass border border-border rounded-lg p-6 shadow-premium">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-primary/15 rounded-lg">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
                 <User className="w-5 h-5 text-primary" />
+                <CardTitle>Personal Details</CardTitle>
               </div>
-              <h2 className="text-lg font-semibold text-foreground">Personal Details</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Full Name</label>
-                <input
-                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                  value={profile.fullName}
-                  onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+              <CardDescription>Your basic information.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    value={profile.fullName}
+                    onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gender (optional)</Label>
+                  <Input
+                    id="gender"
+                    value={profile.gender}
+                    onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="about">About You</Label>
+                <Textarea
+                  id="about"
+                  rows={3}
+                  value={profile.about}
+                  onChange={(e) => setProfile({ ...profile, about: e.target.value })}
                 />
               </div>
-
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Gender (optional)</label>
-                <input
-                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                  value={profile.gender}
-                  onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label className="text-sm font-medium text-foreground block mb-2">About You</label>
-              <textarea
-                rows={3}
-                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none resize-none"
-                value={profile.about}
-                onChange={(e) => setProfile({ ...profile, about: e.target.value })}
-              />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Company Info */}
-          <div className="glass border border-border rounded-lg p-6 shadow-premium">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-primary/15 rounded-lg">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-primary" />
+                <CardTitle>Company Details</CardTitle>
               </div>
-              <h2 className="text-lg font-semibold text-foreground">Company Details</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Company</label>
-                <input
-                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                  value={profile.company}
-                  onChange={(e) => setProfile({ ...profile, company: e.target.value })}
+              <CardDescription>Tell us about your organization.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="company">Company</Label>
+                  <Input
+                    id="company"
+                    value={profile.company}
+                    onChange={(e) => setProfile({ ...profile, company: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="position">Position</Label>
+                  <Input
+                    id="position"
+                    value={profile.position}
+                    onChange={(e) => setProfile({ ...profile, position: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="services">Your Services</Label>
+                <Textarea
+                  id="services"
+                  rows={3}
+                  value={profile.services}
+                  onChange={(e) => setProfile({ ...profile, services: e.target.value })}
                 />
               </div>
-
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Position</label>
-                <input
-                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                  value={profile.position}
-                  onChange={(e) => setProfile({ ...profile, position: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label className="text-sm font-medium text-foreground block mb-2">Your Services</label>
-              <textarea
-                rows={3}
-                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none resize-none"
-                value={profile.services}
-                onChange={(e) => setProfile({ ...profile, services: e.target.value })}
-              />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Online Presence */}
-          <div className="glass border border-border rounded-lg p-6 shadow-premium">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-primary/15 rounded-lg">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
                 <Globe className="w-5 h-5 text-primary" />
+                <CardTitle>Online Presence</CardTitle>
               </div>
-              <h2 className="text-lg font-semibold text-foreground">Online Presence</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Website</label>
-                <input
-                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                  value={profile.website}
-                  onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+              <CardDescription>Where can we find you online?</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="website">Website</Label>
+                  <Input
+                    id="website"
+                    value={profile.website}
+                    onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="linkedin">LinkedIn</Label>
+                  <Input
+                    id="linkedin"
+                    value={profile.linkedin}
+                    onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="valueProposition">Value Proposition (AI uses this)</Label>
+                <Textarea
+                  id="valueProposition"
+                  rows={3}
+                  value={profile.valueProposition}
+                  onChange={(e) => setProfile({ ...profile, valueProposition: e.target.value })}
                 />
               </div>
-
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">LinkedIn</label>
-                <input
-                  className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                  value={profile.linkedin}
-                  onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label className="text-sm font-medium text-foreground block mb-2">Value Proposition (AI uses this)</label>
-              <textarea
-                rows={3}
-                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none resize-none"
-                value={profile.valueProposition}
-                onChange={(e) => setProfile({ ...profile, valueProposition: e.target.value })}
-              />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Writing Preferences */}
-          <div className="glass border border-border rounded-lg p-6 shadow-premium">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-primary/15 rounded-lg">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
                 <PenTool className="w-5 h-5 text-primary" />
+                <CardTitle>Writing Preferences</CardTitle>
               </div>
-              <h2 className="text-lg font-semibold text-foreground">Writing Preferences</h2>
-            </div>
+              <CardDescription>Customize how the AI writes for you.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="personaTone">Default Email Tone</Label>
+                <Select
+                  value={profile.personaTone}
+                  onValueChange={(val) => setProfile({ ...profile, personaTone: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a tone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem value="friendly">Friendly</SelectItem>
+                    <SelectItem value="funny">Funny</SelectItem>
+                    <SelectItem value="aggressive">Aggressive</SelectItem>
+                    <SelectItem value="short">Short & Punchy</SelectItem>
+                    <SelectItem value="long">Detailed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
 
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-2">Default Email Tone</label>
-              <select
-                className="w-full px-4 py-2 rounded-lg bg-secondary/40 border border-border text-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors duration-150 outline-none"
-                value={profile.personaTone}
-                onChange={(e) => setProfile({ ...profile, personaTone: e.target.value })}
-              >
-                <option value="professional">Professional</option>
-                <option value="friendly">Friendly</option>
-                <option value="funny">Funny</option>
-                <option value="aggressive">Aggressive</option>
-                <option value="short">Short & Punchy</option>
-                <option value="long">Detailed</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button
-              onClick={saveProfile}
-              disabled={saving}
-              className="px-6 py-3 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 border border-primary/30 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? "Saving..." : "Save Profile"}
-            </button>
-          </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

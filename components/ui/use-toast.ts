@@ -6,6 +6,7 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactElement<ToastActionElement>;
+  open?: boolean;
 };
 
 const TOAST_LIMIT = 1;

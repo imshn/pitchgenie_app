@@ -1,100 +1,201 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// app/api/billing/webhook/route.ts
-import { NextResponse } from "next/server";
-import { adminDB } from "@/lib/firebase-admin";
+/**
+ * POST /api/billing/webhook
+ * 
+ * Handles Razorpay webhooks for subscription events
+ * 
+ * IMPORTANT: Configure this webhook URL in Razorpay Dashboard:
+ * - URL: https://your-domain.com/api/billing/webhook
+ * - Events: subscription.activated, subscription.charged, subscription.cancelled, payment.failed
+ * - Copy webhook secret and set as RAZORPAY_WEBHOOK_SECRET in .env
+ * 
+ * Security: Validates webhook signature using Razorpay secret
+ */
+
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { adminDB } from "@/lib/firebase-admin";
+import {
+  assignPlanToUser,
+  mapPlanIdToPlanName,
+  findUserByRazorpayId,
+  cancelUserSubscription,
+} from "@/lib/billing-utils";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const bodyText = await req.text();
-    const signature = req.headers.get("x-razorpay-signature") || "";
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+    // 1. Verify webhook signature
+    const signature = req.headers.get("x-razorpay-signature");
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-    // Validate signature
-    const expected = crypto.createHmac("sha256", webhookSecret).update(bodyText).digest("hex");
-    if (!signature || signature !== expected) {
-      console.warn("Invalid Razorpay webhook signature");
-      return NextResponse.json({ ok: false }, { status: 401 });
+    if (!signature || !webhookSecret) {
+      console.error("[Webhook] Missing signature or secret");
+      return NextResponse.json(
+        { error: "Invalid webhook configuration" },
+        { status: 400 }
+      );
     }
 
-    const body = JSON.parse(bodyText);
-    const event = body.event;
-    const payload = body.payload || {};
+    // 2. Read and verify body
+    const body = await req.text();
+    const expectedSignature = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(body)
+      .digest("hex");
 
-    // Only handling subscription events we care about
-    if (event === "subscription.activated" || event === "subscription.charged") {
-      const sub = payload.subscription?.entity;
-      if (!sub) return NextResponse.json({ ok: true });
+    if (signature !== expectedSignature) {
+      console.error("[Webhook] Invalid signature");
+      return NextResponse.json(
+        { error: "Invalid signature" },
+        { status: 401 }
+      );
+    }
 
-      // Find user by pendingSubscriptionId OR by customer id match
-      const subsId = sub.id;
-      const customerId = sub.customer_id;
+    // 3. Parse webhook payload
+    const event = JSON.parse(body);
+    const eventType = event.event;
+    const payload = event.payload?.subscription || event.payload?.payment;
 
-      // First try pendingSubscriptionId
-      let userQuery = await adminDB.collection("users").where("pendingSubscriptionId", "==", subsId).get();
+    console.log(`[Webhook] Received event: ${eventType}`);
 
-      if (userQuery.empty && customerId) {
-        // fallback: try to find user by razorpayCustomerId
-        userQuery = await adminDB.collection("users").where("razorpayCustomerId", "==", customerId).get();
+    // 4. Handle different event types
+    switch (eventType) {
+      case "subscription.activated":
+      case "subscription.charged": {
+        await handleSubscriptionActivated(payload, event);
+        break;
       }
 
-      if (!userQuery.empty) {
-        const userDoc = userQuery.docs[0];
-        const userRef = userDoc.ref;
+      case "subscription.cancelled": {
+        await handleSubscriptionCancelled(payload);
+        break;
+      }
 
-        // Determine plan & credits from plan_id
-        const planId = sub.plan_id;
-        let plan = "starter";
-        let credits = 600;
+      case "payment.failed": {
+        console.log(`[Webhook] Payment failed for subscription ${payload?.entity?.subscription_id}`);
+        // Log but don't change plan yet - give user chance to retry
+        break;
+      }
 
-        if (planId === process.env.RAZORPAY_PLAN_STARTER) {
-          plan = "starter";
-          credits = 600;
-        } else if (planId === process.env.RAZORPAY_PLAN_PRO) {
-          plan = "pro";
-          credits = 1500;
-        } else if (planId === process.env.RAZORPAY_PLAN_AGENCY) {
-          plan = "agency";
-          credits = -1; // -1 meaning unlimited
-        }
-
-        const updatePayload: any = {
-          plan,
-          pendingSubscriptionId: null,
-          stripeSubscriptionId: sub.id, // name kept same for compatibility
-          activatedAt: Date.now(),
-        };
-
-        if (credits === -1) {
-          updatePayload.credits = 999999999; // effectively unlimited
-          updatePayload.isUnlimited = true;
-        } else {
-          updatePayload.credits = credits;
-          updatePayload.isUnlimited = false;
-        }
-
-        await userRef.update(updatePayload);
-        console.log(`Activated subscription for user ${userRef.id}, plan=${plan}`);
-      } else {
-        console.warn("Razorpay webhook: user not found for subscription:", subsId);
+      default: {
+        console.log(`[Webhook] Unhandled event type: ${eventType}`);
       }
     }
 
-    if (event === "subscription.cancelled") {
-      const sub = payload.subscription?.entity;
-      if (sub) {
-        // find user by subscription id and mark canceled (you may want to set plan->free)
-        const userQuery = await adminDB.collection("users").where("stripeSubscriptionId", "==", sub.id).get();
-        if (!userQuery.empty) {
-          const uref = userQuery.docs[0].ref;
-          await uref.update({ plan: "free", credits: 150, isUnlimited: false, canceledAt: Date.now() });
-        }
-      }
+    // 5. Return 200 quickly to acknowledge receipt
+    return NextResponse.json({ received: true });
+
+  } catch (error: any) {
+    console.error("[Webhook] Error processing webhook:", error);
+    return NextResponse.json(
+      { error: "Webhook processing failed" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Handle subscription activation/charge event
+ */
+async function handleSubscriptionActivated(subscription: any, event: any) {
+  try {
+    const subscriptionId = subscription.id;
+    const planId = subscription.plan_id;
+    const customerId = subscription.customer_id;
+
+    // Check for duplicate processing (idempotency)
+    const eventId = event.id || subscriptionId;
+    const processedCheck = await adminDB
+      .collection("processedWebhooks")
+      .doc(eventId)
+      .get();
+
+    if (processedCheck.exists) {
+      console.log(`[Webhook] Event ${eventId} already processed`);
+      return;
     }
 
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error("WEBHOOK ERROR:", err);
-    return NextResponse.json({ error: "Webhook handling failed" }, { status: 500 });
+    // Find user by pending subscription ID or customer ID
+    let uid = await findUserByRazorpayId("pendingSubscriptionId", subscriptionId);
+    if (!uid) {
+      uid = await findUserByRazorpayId("razorpaySubscriptionId", subscriptionId);
+    }
+    if (!uid) {
+      uid = await findUserByRazorpayId("razorpayCustomerId", customerId);
+    }
+
+    if (!uid) {
+      console.error(`[Webhook] User not found for subscription ${subscriptionId}`);
+      return;
+    }
+
+    // Map plan ID to plan name
+    const plan = mapPlanIdToPlanName(planId);
+    if (!plan) {
+      console.error(`[Webhook] Unknown plan ID: ${planId}`);
+      return;
+    }
+
+    // Assign plan and credits to user
+    await assignPlanToUser(uid, plan, subscriptionId);
+
+    // Log analytics event
+    await adminDB
+      .collection("users")
+      .doc(uid)
+      .collection("events")
+      .add({
+        type: "subscription_activated",
+        plan,
+        subscriptionId,
+        timestamp: Date.now(),
+        metadata: {
+          planId,
+          customerId,
+        },
+      });
+
+    // Mark webhook as processed
+    await adminDB
+      .collection("processedWebhooks")
+      .doc(eventId)
+      .set({
+        eventType: "subscription.activated",
+        subscriptionId,
+        uid,
+        plan,
+        processedAt: Date.now(),
+      });
+
+    console.log(`[Webhook] Successfully activated ${plan} plan for user ${uid}`);
+
+  } catch (error) {
+    console.error("[Webhook] Error handling subscription activation:", error);
+    throw error;
+  }
+}
+
+/**
+ * Handle subscription cancellation event
+ */
+async function handleSubscriptionCancelled(subscription: any) {
+  try {
+    const subscriptionId = subscription.id;
+
+    // Find user by subscription ID
+    const uid = await findUserByRazorpayId("razorpaySubscriptionId", subscriptionId);
+    
+    if (!uid) {
+      console.error(`[Webhook] User not found for cancelled subscription ${subscriptionId}`);
+      return;
+    }
+
+    // Cancel user subscription (set to free plan)
+    await cancelUserSubscription(uid);
+
+    console.log(`[Webhook] Successfully cancelled subscription for user ${uid}`);
+
+  } catch (error) {
+    console.error("[Webhook] Error handling subscription cancellation:", error);
+    throw error;
   }
 }

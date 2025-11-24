@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { logEvent } from "@/lib/analytics-server";
 import { FieldValue } from "firebase-admin/firestore";
 import nodemailer from "nodemailer";
 
@@ -69,28 +70,16 @@ export async function POST(req: Request) {
     });
 
     // Analytics
-    await adminDB
-      .collection("users")
-      .doc(uid)
-      .collection("events")
-      .add({
-        type: "sent",
-        leadId,
-        timestamp: Date.now(),
-      });
+    logEvent(uid, {
+      type: "email_sent",
+      leadId,
+    });
 
-    await adminDB
-      .collection("users")
-      .doc(uid)
-      .collection("analytics")
-      .doc("summary")
-      .set(
-        {
-          sent: FieldValue.increment(1),
-          updatedAt: Date.now(),
-        },
-        { merge: true }
-      );
+    // Log analytics event for email sent
+    await logEvent(uid, {
+      type: "email_sent",
+      leadId,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

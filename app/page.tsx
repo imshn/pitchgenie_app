@@ -2,163 +2,166 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Rocket, Zap, BarChart, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Rocket, Zap, BarChart, ArrowRight, CheckCircle2, Mail, Users, Globe } from 'lucide-react';
+import { LandingNavbar } from "@/components/LandingNavbar";
+import { MagicCard } from "@/components/ui/magic-card";
+import { Marquee } from "@/components/ui/marquee";
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
-          <Link className="flex items-center gap-2 font-semibold text-lg" href="/">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Rocket className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span>PitchGenie</span>
-          </Link>
-          <nav className="hidden md:flex gap-8">
-            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Features
-            </a>
-            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Pricing
-            </a>
-          </nav>
-          <div className="flex gap-3">
-            <Link href="/login">
-              <Button variant="ghost" size="sm">Login</Button>
-            </Link>
-            <Link href="/signup">
-              <Button size="sm" className="bg-primary hover:bg-primary/90">Sign Up</Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col min-h-screen bg-background text-foreground selection:bg-primary/20">
+      <LandingNavbar />
 
       <main className="flex-1">
+        {/* Hero Section */}
         <section className="relative w-full py-20 md:py-32 lg:py-40 overflow-hidden">
-          {/* Subtle gradient background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background pointer-events-none" />
           
           <div className="container mx-auto px-4 md:px-6 relative z-10">
             <div className="flex flex-col items-center space-y-8 text-center">
               {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary border border-border">
-                <CheckCircle2 className="h-4 w-4 text-accent" />
-                <span className="text-sm text-muted-foreground">Join 2,000+ sales teams already using PitchGenie</span>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 border border-border backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+                <span className="text-sm text-muted-foreground">Trusted by 2,000+ sales teams</span>
               </div>
 
               {/* Main heading */}
-              <div className="space-y-4 max-w-3xl">
-                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-balance">
-                  Generate Personalized Cold Emails
-                  <span className="block text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent mt-2">
-                    That Actually Get Replies
-                  </span>
+              <div className="space-y-6 max-w-4xl animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-100">
+                <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-balance">
+                  Cold Emails That <br />
+                  <span className="text-gradient">Actually Get Replies</span>
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                  PitchGenie uses AI to analyze your leads and craft unique, engaging emails. Stop wasting time on templates. Start converting leads.
+                  Stop wasting time on templates. PitchGenie uses AI to analyze your leads and craft hyper-personalized emails that convert.
                 </p>
               </div>
 
               {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <div className="flex flex-col sm:flex-row gap-4 pt-4 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
                 <Link href="/signup">
-                  <Button size="lg" className="bg-primary hover:bg-primary/90 gap-2">
+                  <Button size="lg" className="h-12 px-8 text-base bg-primary hover:bg-primary/90 shadow-glow hover:shadow-lg hover:shadow-primary/25 transition-all">
                     Get Started for Free
-                    <ArrowRight className="h-4 w-4" />
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
                 <Link href="#features">
-                  <Button size="lg" variant="outline">Learn More</Button>
+                  <Button size="lg" variant="outline" className="h-12 px-8 text-base glass hover:bg-secondary/50">
+                    View Demo
+                  </Button>
                 </Link>
               </div>
 
-              {/* Trust badges */}
-              <div className="flex flex-col sm:flex-row gap-6 pt-8 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-accent" />
-                  <span>No credit card required</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-accent" />
-                  <span>100+ leads per month free</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-accent" />
-                  <span>Cancel anytime</span>
+              {/* 3D Dashboard Preview (Mockup) */}
+              <div className="w-full max-w-5xl mt-16 perspective-1000 animate-in fade-in zoom-in duration-1000 delay-300">
+                <div className="relative rounded-xl border border-border bg-card/50 shadow-2xl transform-style-3d rotate-x-12 hover:rotate-x-0 transition-transform duration-700 ease-out">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-transparent rounded-xl pointer-events-none" />
+                  <img 
+                    src="https://ui.shadcn.com/placeholder.svg" 
+                    alt="Dashboard Preview" 
+                    className="w-full h-auto rounded-xl opacity-90"
+                  />
+                  {/* Overlay Gradient */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent h-1/2 bottom-0" />
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section id="features" className="relative w-full py-20 md:py-32 border-t border-border">
+        {/* Social Proof Marquee */}
+        <section className="py-12 border-y border-border bg-secondary/20">
+          <div className="container mx-auto px-4">
+            <p className="text-center text-sm text-muted-foreground mb-8">TRUSTED BY INNOVATIVE TEAMS AT</p>
+            <Marquee pauseOnHover className="[--duration:20s]">
+              {['Acme Corp', 'GlobalTech', 'Nebula', 'Vertex', 'Horizon', 'Pinnacle'].map((company) => (
+                <div key={company} className="mx-8 text-xl font-bold text-muted-foreground/50 flex items-center gap-2">
+                  <Globe className="h-6 w-6" />
+                  {company}
+                </div>
+              ))}
+            </Marquee>
+          </div>
+        </section>
+
+        {/* Features Section */}
+        <section id="features" className="relative w-full py-24 lg:py-32">
           <div className="container mx-auto px-4 md:px-6">
             <div className="flex flex-col items-center space-y-4 text-center mb-16">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary border border-border">
-                <span className="text-sm text-accent font-medium">Features</span>
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
-                Everything you need to win more deals
+              <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
+                Supercharge Your Outreach
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl">
-                Powerful features designed specifically for sales teams who want to scale their outreach without sacrificing personalization
+                Everything you need to scale your sales process without losing the human touch.
               </p>
             </div>
 
-            {/* Feature grid */}
-            <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
-              {/* Feature 1 */}
-              <div className="group glass glass-hover p-8 rounded-xl transition-all duration-300">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10 mb-4 group-hover:bg-primary/20 transition-colors">
-                  <Zap className="h-6 w-6 text-primary" />
+            <div className="grid md:grid-cols-3 gap-6 lg:gap-8 h-[500px]">
+              <MagicCard className="p-8 flex flex-col justify-between group">
+                <div>
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <Zap className="h-6 w-6 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-4">AI Personalization</h3>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Our AI analyzes LinkedIn profiles, company news, and website content to write emails that look 100% human-researched.
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold mb-3">AI-Powered Generation</h3>
-                <p className="text-muted-foreground">
-                  Our advanced AI analyzes your lead&apos;s company, role, and profile to write hyper-personalized emails that feel authentic and human-written.
-                </p>
-              </div>
+                <div className="mt-8 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-lg border border-border/50" />
+              </MagicCard>
 
-              {/* Feature 2 */}
-              <div className="group glass glass-hover p-8 rounded-xl transition-all duration-300">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-accent/10 mb-4 group-hover:bg-accent/20 transition-colors">
-                  <BarChart className="h-6 w-6 text-accent" />
+              <MagicCard className="p-8 flex flex-col justify-between group">
+                <div>
+                  <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <Users className="h-6 w-6 text-blue-500" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-4">Bulk Processing</h3>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Upload your lead lists and generate thousands of personalized drafts in minutes. Export directly to your favorite sending tool.
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold mb-3">Bulk Processing</h3>
-                <p className="text-muted-foreground">
-                  Upload a CSV of your leads and generate hundreds of personalized emails in minutes. No more copy-paste. Pure automation.
-                </p>
-              </div>
+                <div className="mt-8 h-32 bg-gradient-to-br from-blue-500/5 to-transparent rounded-lg border border-border/50" />
+              </MagicCard>
 
-              {/* Feature 3 */}
-              <div className="group glass glass-hover p-8 rounded-xl transition-all duration-300">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10 mb-4 group-hover:bg-primary/20 transition-colors">
-                  <Rocket className="h-6 w-6 text-primary" />
+              <MagicCard className="p-8 flex flex-col justify-between group">
+                <div>
+                  <div className="w-12 h-12 rounded-lg bg-orange-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <Mail className="h-6 w-6 text-orange-500" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-4">Smart Sequences</h3>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Don't just send one email. Create multi-touch sequences with automated follow-ups that adapt based on recipient behavior.
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold mb-3">Follow-up Sequences</h3>
-                <p className="text-muted-foreground">
-                  Not just first touchpoints. Get follow-up emails generated automatically to keep leads warm and maximize your reply rates.
-                </p>
-              </div>
+                <div className="mt-8 h-32 bg-gradient-to-br from-orange-500/5 to-transparent rounded-lg border border-border/50" />
+              </MagicCard>
             </div>
           </div>
         </section>
 
-        <section className="relative w-full py-20 md:py-32 border-t border-border">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="glass p-12 md:p-16 rounded-2xl text-center space-y-8 max-w-2xl mx-auto">
-              <div>
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to transform your outreach?</h2>
-                <p className="text-lg text-muted-foreground">
-                  Join thousands of sales professionals who are already using PitchGenie to close more deals with less effort.
+        {/* CTA Section */}
+        <section className="relative w-full py-24 lg:py-32 overflow-hidden">
+          <div className="absolute inset-0 bg-primary/5" />
+          <div className="container mx-auto px-4 md:px-6 relative">
+            <div className="glass-card p-12 md:p-20 rounded-3xl text-center space-y-8 max-w-4xl mx-auto border border-primary/20 shadow-glow">
+              <div className="space-y-4">
+                <h2 className="text-3xl md:text-5xl font-bold tracking-tight">
+                  Ready to 10x your reply rates?
+                </h2>
+                <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+                  Join the top 1% of sales teams using AI to personalize at scale.
                 </p>
               </div>
-              <Link href="/signup">
-                <Button size="lg" className="bg-primary hover:bg-primary/90 gap-2">
-                  Start Your Free Trial
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+              <div className="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                <Link href="/signup">
+                  <Button size="lg" className="h-14 px-8 text-lg bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25">
+                    Start Your Free Trial
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </Link>
+              </div>
+              <p className="text-sm text-muted-foreground pt-4">
+                No credit card required · 14-day free trial · Cancel anytime
+              </p>
             </div>
           </div>
         </section>
@@ -168,17 +171,18 @@ export default function HomePage() {
         <div className="container mx-auto px-4 md:px-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-primary flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                 <Rocket className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold">PitchGenie</span>
+              <span className="font-bold text-lg">PitchGenie</span>
             </div>
-            <nav className="flex gap-6 text-sm text-muted-foreground">
+            <nav className="flex gap-8 text-sm font-medium text-muted-foreground">
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
               <a href="#" className="hover:text-foreground transition-colors">Contact</a>
+              <a href="#" className="hover:text-foreground transition-colors">Twitter</a>
             </nav>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               © 2025 PitchGenie. All rights reserved.
             </p>
           </div>

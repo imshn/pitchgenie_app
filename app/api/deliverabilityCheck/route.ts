@@ -55,17 +55,10 @@ ${body}
       model: "gpt-4o-mini",
       temperature: 0.2,
       messages: [{ role: "user", content: prompt }],
+      response_format: { type: 'json_object' },
     });
 
     let raw = completion.choices[0].message?.content || "{}";
-
-    // -------------------------------
-    // SANITIZE RAW OUTPUT
-    // -------------------------------
-    raw = raw
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
 
     // -------------------------------
     // SAFE JSON PARSE

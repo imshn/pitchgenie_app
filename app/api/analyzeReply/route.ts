@@ -39,10 +39,10 @@ Return JSON:
       model: "gpt-4o-mini",
       temperature: 0.2,
       messages: [{ role: "user", content: prompt }],
+      response_format: { type: 'json_object' },
     });
 
     let raw = completion.choices[0].message?.content || "{}";
-    raw = raw.replace(/```json/g, "").replace(/```/g, "").trim();
 
     let json;
     try {

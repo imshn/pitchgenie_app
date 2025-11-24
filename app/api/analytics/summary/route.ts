@@ -1,48 +1,88 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { NextResponse } from 'next/server';
+import { adminAuth, adminDB } from '@/lib/firebase-admin';
+
+// Helper to get start of day timestamp
+function startOfDay(ts: number) {
+  const d = new Date(ts);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime();
+}
 
 export async function GET(req: Request) {
   try {
-    const auth = req.headers.get("authorization") || "";
-    const token = auth.replace("Bearer ", "");
+    const auth = req.headers.get('authorization') || '';
+    const token = auth.replace('Bearer ', '').trim();
     const decoded = await adminAuth.verifyIdToken(token);
+    const uid = decoded.uid;
 
-    const ref = adminDB
-      .collection("users")
-      .doc(decoded.uid)
-      .collection("analytics")
-      .doc("summary");
+    // Fetch summary document
+    const summarySnap = await adminDB
+      .collection('users')
+      .doc(uid)
+      .collection('analytics')
+      .doc('summary')
+      .get();
+    const summary = summarySnap.exists ? summarySnap.data() : {};
 
-    const snap = await ref.get();
+    // Fetch last 30 days of events
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const eventsSnap = await adminDB
+      .collection('users')
+      .doc(uid)
+      .collection('events')
+      .where('timestamp', '>=', thirtyDaysAgo)
+      .orderBy('timestamp', 'desc')
+      .get();
+    const events: any[] = [];
+    eventsSnap.forEach((doc) => events.push({ id: doc.id, ...doc.data() }));
 
-    if (!snap.exists) {
-      return NextResponse.json({
-        sent: 0,
-        opens: 0,
-        clicks: 0,
-        replies: 0,
-        deliverability: 0,
-      });
+    // Build 30‑day time series
+    const seriesMap: Record<string, any> = {};
+    for (let i = 0; i < 30; i++) {
+      const day = new Date();
+      day.setDate(day.getDate() - i);
+      const key = day.toISOString().split('T')[0]; // YYYY‑MM‑DD
+      seriesMap[key] = {
+        date: key,
+        email_generated: 0,
+        email_sent: 0,
+        sequence_generated: 0,
+        scraper_run: 0,
+        credits_used: 0,
+      };
     }
-
-    const data = snap.data();
-
-    let avg = 0;
-    if (data?.deliverabilityScores?.length) {
-      const total = data?.deliverabilityScores.reduce((a: any, b: any) => a + b, 0);
-      avg = Math.round(total / data?.deliverabilityScores.length);
-    }
-
-    return NextResponse.json({
-      sent: data?.sent || 0,
-      opens: data?.opens || 0,
-      clicks: data?.clicks || 0,
-      replies: data?.replies || 0,
-      deliverability: avg,
+    events.forEach((e) => {
+      const dateKey = new Date(e.timestamp).toISOString().split('T')[0];
+      if (!seriesMap[dateKey]) return; // outside 30‑day window
+      if (e.cost) {
+        seriesMap[dateKey].credits_used += e.cost;
+      }
+      
+      switch (e.type) {
+        case 'email_generated':
+          seriesMap[dateKey].email_generated += 1;
+          break;
+        case 'email_sent':
+          seriesMap[dateKey].email_sent += 1;
+          break;
+        case 'sequence_generated':
+          seriesMap[dateKey].sequence_generated += 1;
+          break;
+        case 'scraper_run':
+          seriesMap[dateKey].scraper_run += 1;
+          break;
+        default:
+          break;
+      }
     });
-  } catch (e) {
-    console.error("summary error", e);
-    return NextResponse.json({ error: "failed" }, { status: 500 });
+    const timeseries = Object.values(seriesMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Most recent 20 events (already ordered desc)
+    const recent = events.slice(0, 20);
+
+    return NextResponse.json({ summary, timeseries, recent });
+  } catch (error) {
+    console.error('[Analytics Summary] Error:', error);
+    return NextResponse.json({ error: 'Unauthorized or server error' }, { status: 401 });
   }
 }

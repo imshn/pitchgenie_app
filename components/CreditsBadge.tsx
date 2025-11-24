@@ -1,35 +1,76 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// components/CreditsBadge.tsx
+/**
+ * CreditsBadge Component
+ * 
+ * Displays user's current plan, credits, and next reset date
+ * Real-time updates via Firestore listener
+ */
+
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { Badge } from "@/components/ui/badge";
+import { Zap, Calendar } from "lucide-react";
+import { PLAN_CONFIGS } from "@/lib/credit-types";
+import type { PlanType } from "@/lib/credit-types";
 
-export default function CreditsBadge() {
-  const [info, setInfo] = useState<any>(null);
+export function CreditsBadge() {
+  const [plan, setPlan] = useState<PlanType>("free");
+  const [credits, setCredits] = useState<number>(0);
+  const [isUnlimited, setIsUnlimited] = useState(false);
+  const [nextReset, setNextReset] = useState<number | null>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) return setInfo(null);
-      u.getIdToken().then(async (token) => {
-        try {
-          const res = await axios.get("/api/billing/info", { headers: { Authorization: `Bearer ${token}` } });
-          setInfo(res.data);
-        } catch (err) {
-          console.error(err);
-        }
-      });
+    const unsubAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const unsubDoc = onSnapshot(doc(db, "users", user.uid), (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            setPlan(data.plan || "free");
+            setCredits(data.credits || 0);
+            setIsUnlimited(data.isUnlimited || false);
+            setNextReset(data.nextReset || null);
+          }
+        });
+        return () => unsubDoc();
+      }
     });
-    return () => unsub();
+    return () => unsubAuth();
   }, []);
 
-  if (!info) return null;
+  const planConfig = PLAN_CONFIGS[plan];
+  const daysUntilReset = nextReset
+    ? Math.ceil((nextReset - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+
   return (
-    <div className="px-3 py-2 rounded-md bg-white/5 text-sm">
-      Credits: <strong>{info.isUnlimited ? "∞" : info.credits}</strong>
-      <div className="text-xs text-gray-400">Plan: {info.plan}</div>
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/20 border border-border">
+      <div className="flex items-center gap-2">
+        <Zap className="h-4 w-4 text-primary" />
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold capitalize">{plan} Plan</span>
+            {plan !== "free" && (
+              <Badge variant="default" className="text-xs">
+                Active
+              </Badge>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {isUnlimited
+              ? "Unlimited Credits"
+              : `${credits.toLocaleString()} / ${planConfig.maxCredits.toLocaleString()} credits`}
+          </div>
+        </div>
+      </div>
+
+      {daysUntilReset && daysUntilReset > 0 && (
+        <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+          <Calendar className="h-3 w-3" />
+          <span>{daysUntilReset}d reset</span>
+        </div>
+      )}
     </div>
   );
 }

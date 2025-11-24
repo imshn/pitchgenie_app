@@ -5,7 +5,10 @@ import { useState } from "react";
 import axios from "axios";
 import { auth } from "@/lib/firebase";
 import toast from "react-hot-toast";
-import { Upload, File } from 'lucide-react';
+import { Upload, File, CloudUpload, AlertCircle } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -31,18 +34,19 @@ export default function UploadPage() {
 
   return (
     <AuthGuard>
-      <main className="pl-64 min-h-screen bg-background p-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">Upload Leads</h1>
-            <p className="text-muted-foreground">Import leads from a CSV file</p>
-          </div>
-
-          <div className="glass border border-border rounded-lg p-8 shadow-premium">
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-foreground mb-4">CSV File</label>
-                <div className="relative">
+      <div className="flex flex-col h-full">
+        <PageHeader 
+          title="Upload Leads" 
+          description="Import your leads from a CSV file to start generating outreach."
+        />
+        
+        <div className="flex-1 p-6 overflow-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {/* Left Column: Upload Area */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="rounded-lg border border-border bg-card p-8">
+                <label className="block text-sm font-medium text-foreground mb-4">CSV File</label>
+                <div className="relative group">
                   <input
                     type="file"
                     accept=".csv"
@@ -52,46 +56,88 @@ export default function UploadPage() {
                   />
                   <label
                     htmlFor="file-upload"
-                    className="flex flex-col items-center justify-center w-full p-8 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors duration-150"
+                    className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-300 ${
+                      file 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/50 hover:bg-secondary/50"
+                    }`}
                   >
                     {file ? (
-                      <div className="text-center">
-                        <File className="w-8 h-8 text-primary mx-auto mb-2" />
+                      <div className="text-center animate-in fade-in zoom-in duration-300">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                          <File className="w-6 h-6 text-primary" />
+                        </div>
                         <p className="text-sm font-medium text-foreground">{file.name}</p>
-                        <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+                        <p className="text-xs text-muted-foreground mt-1">{(file.size / 1024).toFixed(1)} KB</p>
                       </div>
                     ) : (
                       <div className="text-center">
-                        <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                        <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform duration-300">
+                          <CloudUpload className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </div>
                         <p className="text-sm font-medium text-foreground">Click to upload or drag and drop</p>
                         <p className="text-xs text-muted-foreground mt-1">CSV format (first row as header)</p>
                       </div>
                     )}
                   </label>
                 </div>
+
+                <div className="mt-6 flex justify-end">
+                  <Button
+                    onClick={upload}
+                    disabled={loading || !file}
+                    className="w-full sm:w-auto min-w-[150px]"
+                    size="lg"
+                  >
+                    {loading ? "Uploading..." : "Upload Leads"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Instructions */}
+            <div className="space-y-6">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                  <File className="w-4 h-4 text-primary" />
+                  Format Requirements
+                </h3>
+                <div className="space-y-4 text-sm text-muted-foreground">
+                  <p>
+                    Your CSV file must include a header row with specific column names for the import to work correctly.
+                  </p>
+                  
+                  <div className="space-y-2">
+                    <p className="font-medium text-foreground text-xs uppercase tracking-wider">Required Columns</p>
+                    <div className="flex flex-wrap gap-2">
+                      <code className="bg-secondary px-2 py-1 rounded text-xs text-foreground border border-border">name</code>
+                      <code className="bg-secondary px-2 py-1 rounded text-xs text-foreground border border-border">email</code>
+                      <code className="bg-secondary px-2 py-1 rounded text-xs text-foreground border border-border">company</code>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="font-medium text-foreground text-xs uppercase tracking-wider">Optional Columns</p>
+                    <div className="flex flex-wrap gap-2">
+                      <code className="bg-secondary px-2 py-1 rounded text-xs text-foreground border border-border">role</code>
+                      <code className="bg-secondary px-2 py-1 rounded text-xs text-foreground border border-border">website</code>
+                      <code className="bg-secondary px-2 py-1 rounded text-xs text-foreground border border-border">industry</code>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <button
-                onClick={upload}
-                disabled={loading || !file}
-                className="w-full px-4 py-3 rounded-lg text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 border border-primary/30 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? "Uploading..." : "Upload"}
-              </button>
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Note</AlertTitle>
+                <AlertDescription>
+                  Maximum file size is 10MB. Large files may take a few moments to process.
+                </AlertDescription>
+              </Alert>
             </div>
           </div>
-
-          <div className="mt-8 glass border border-border rounded-lg p-6">
-            <h3 className="font-semibold text-foreground mb-3">Format Requirements</h3>
-            <ul className="text-sm text-muted-foreground space-y-2">
-              <li>• First row must contain column headers</li>
-              <li>• Required columns: name, email, company</li>
-              <li>• Optional columns: role, website, industry</li>
-              <li>• Maximum file size: 10 MB</li>
-            </ul>
-          </div>
         </div>
-      </main>
+      </div>
     </AuthGuard>
   );
 }

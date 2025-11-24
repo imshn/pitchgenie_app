@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { logEvent } from "@/lib/analytics-server";
+import { checkCredits, deductCredits } from "@/lib/credits";
 import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -21,6 +23,21 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
+      );
+    }
+
+    // ------------------ CREDIT CHECK ------------------
+    const creditCheck = await checkCredits(uid, "email");
+    if (!creditCheck.ok) {
+      return NextResponse.json(
+        { 
+          error: creditCheck.error === "INSUFFICIENT_CREDITS" 
+            ? "Insufficient credits. Please upgrade your plan." 
+            : "Credit check failed",
+          code: creditCheck.error,
+          credits: creditCheck.credits 
+        },
+        { status: 403 }
       );
     }
 
@@ -71,6 +88,7 @@ Return ONLY a JSON object:
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.8,
+      response_format: { type: 'json_object' },
     });
 
     const raw = completion.choices[0].message?.content || "{}";
@@ -83,6 +101,16 @@ Return ONLY a JSON object:
       followUp: output.followUp,
       updatedAt: Date.now(),
     });
+
+    // ------------------ ANALYTICS ------------------
+    await logEvent(uid, {
+      type: "email_generated",
+      leadId,
+      cost: 1,
+    });
+
+    // ------------------ DEDUCT CREDITS ------------------
+    await deductCredits(uid, "email");
 
     return NextResponse.json(output);
   } catch (error) {

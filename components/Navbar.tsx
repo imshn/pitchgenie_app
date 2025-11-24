@@ -5,8 +5,12 @@ import { auth, db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useTheme } from "next-themes";
+import { Rocket, Sun, Moon } from "lucide-react";
 
 export default function Navbar() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const user = auth.currentUser;
 
@@ -22,33 +26,50 @@ export default function Navbar() {
   }, [user]);
 
   return (
-    <header className="w-full border-b border-white/10 sticky top-0 z-50 bg-[#0B0B0F]/70 backdrop-blur-xl shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-      <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
-        {/* LEFT — LOGO */}
-        <Link href="/dashboard" className="text-xl font-bold">
-          PitchGenie
+    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+        <Link className="flex items-center gap-2 font-bold text-xl" href="/">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-glow">
+            <Rocket className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+            PitchGenie
+          </span>
         </Link>
 
-        {/* MIDDLE — NAV LINKS */}
-        <nav className="flex items-center gap-6 text-sm text-gray-300">
-          <Link
-            href="/dashboard"
-            className="hover:text-white/90 text-gray-300 transition-colors"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/upload"
-            className="hover:text-white/90 text-gray-300 transition-colors"
-          >
-            Upload CSV
-          </Link>
-          <Link
-            href="/pricing"
-            className="hover:text-white/90 text-gray-300 transition-colors"
-          >
+        {/* Desktop Nav */}
+        <nav className="hidden md:flex items-center gap-8">
+          <a href="#features" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Features
+          </a>
+          <a href="#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Pricing
-          </Link>
+          </a>
+          <div className="flex items-center gap-3 pl-4 border-l border-border">
+            {mounted && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="rounded-full"
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-5 w-5" />
+                ) : (
+                  <Moon className="h-5 w-5" />
+                )}
+                <span className="sr-only">Toggle theme</span>
+              </Button>
+            )}
+            <Link href="/login">
+              <Button variant="ghost" size="sm">Login</Button>
+            </Link>
+            <Link href="/signup">
+              <Button size="sm" className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
+                Sign Up
+              </Button>
+            </Link>
+          </div>
         </nav>
 
         {/* RIGHT — CREDITS + LOGOUT */}

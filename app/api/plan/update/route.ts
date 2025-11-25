@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
-import { updateUserPlan, PlanType } from "@/lib/credits";
+import { updateWorkspacePlan, PlanType } from "@/lib/credits";
 
 export async function POST(req: Request) {
   try {
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     }
 
     // Update the plan
-    const result = await updateUserPlan(uid, plan);
+    const result = await updateWorkspacePlan(uid, plan);
 
     if (!result.success) {
       return NextResponse.json(

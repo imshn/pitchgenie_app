@@ -14,6 +14,7 @@ import {
   updateDoc,
   arrayUnion,
   arrayRemove,
+  documentId,
 } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -22,7 +23,9 @@ import EmailPreviewDrawer from "./EmailPreviewDrawer";
 import LinkedInDrawer from "./LinkedInDrawer";
 import SequenceDrawer from "./SequenceDrawer";
 import AddLeadDialog from "./AddLeadDialog";
-import { Loader2, MoreHorizontal, Mail, Linkedin, Repeat, LayoutGrid, Table as TableIcon, Search, Filter, Plus, X, FileText, Download } from "lucide-react";
+import ReplyAnalyzerDrawer from "./ReplyAnalyzerDrawer";
+import ReplyInputDialog from "./ReplyInputDialog";
+import { Loader2, MoreHorizontal, Mail, Linkedin, Repeat, LayoutGrid, Table as TableIcon, Search, Filter, Plus, X, FileText, Download, MessageSquare, ChevronDown, FileSpreadsheet, StickyNote } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -49,7 +52,7 @@ import { TagInput } from "./crm/TagInput";
 
 export default function LeadTable() {
   const [leads, setLeads] = useState<any[]>([]);
-  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadingAction, setLoadingAction] = useState<{ leadId: string; action: string } | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "pipeline">("table");
 
   // Filters
@@ -61,16 +64,40 @@ export default function LeadTable() {
   const [previewEmail, setPreviewEmail] = useState<any | null>(null);
   const [previewLinkedIn, setPreviewLinkedIn] = useState<any | null>(null);
   const [previewSequence, setPreviewSequence] = useState<any | null>(null);
+  const [replyAnalyzerData, setReplyAnalyzerData] = useState<any | null>(null);
+  const [showReplyInput, setShowReplyInput] = useState(false);
 
+  // -----------------------------------------
+  // FETCH LEADS
+  // -----------------------------------------
   // -----------------------------------------
   // FETCH LEADS
   // -----------------------------------------
   const fetchLeads = async (uid?: string) => {
     if (!uid) return;
-    const q = query(collection(db, "leads"), where("uid", "==", uid));
-    const snap = await getDocs(q);
 
-    setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    try {
+      // 1. Get current workspace ID
+      const userDoc = await getDocs(query(collection(db, "users"), where(documentId(), "==", uid)));
+      if (userDoc.empty) return;
+
+      const userData = userDoc.docs[0].data();
+      const workspaceId = userData.currentWorkspaceId;
+
+      if (!workspaceId) {
+        console.warn("No workspace ID found for user");
+        return;
+      }
+
+      // 2. Query workspace leads
+      const q = query(collection(db, "workspaces", workspaceId, "leads"));
+      const snap = await getDocs(q);
+
+      setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching leads:", error);
+      toast.error("Failed to load leads");
+    }
   };
 
   useEffect(() => {
@@ -170,33 +197,62 @@ export default function LeadTable() {
   };
 
   // -----------------------------------------
-  // EXPORT LEADS
+  // EXPORT LEADS - SERVER SIDE CSV
   // -----------------------------------------
-  const handleExport = () => {
+  const handleExportCSV = async () => {
     if (filteredLeads.length === 0) {
       toast.error("No leads to export");
       return;
     }
 
-    const data = filteredLeads.map(lead => ({
-      Name: lead.name,
-      Email: lead.email,
-      Company: lead.company,
-      Role: lead.role,
-      Website: lead.website,
-      Status: lead.status,
-      Tags: lead.tags?.join(", "),
-      Notes: lead.notes,
-      CreatedAt: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "",
-    }));
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error("Login required");
+        return;
+      }
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Leads");
-    const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    saveAs(blob, `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
-    toast.success("Leads exported successfully");
+      const token = await user.getIdToken();
+      const url = `/api/exportCsv?token=${encodeURIComponent(token)}&uid=${user.uid}`;
+
+      // Trigger download
+      window.open(url, '_blank');
+      toast.success("CSV export started");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export CSV");
+    }
+  };
+
+  // -----------------------------------------
+  // EXPORT TO NOTION
+  // -----------------------------------------
+  const handleExportToNotion = async (leadId: string) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error("Login required");
+        return;
+      }
+
+      const token = await user.getIdToken();
+      const res = await axios.post(
+        "/api/exportToNotion",
+        { uid: user.uid, leadId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      toast.success("Lead exported to Notion!");
+    } catch (err: any) {
+      console.error(err);
+      const errorMsg = err?.response?.data?.error || "Failed to export to Notion";
+
+      if (errorMsg.includes("not configured")) {
+        toast.error("Notion not configured. Add NOTION_TOKEN and NOTION_PARENT_PAGE_ID to your environment variables.");
+      } else {
+        toast.error(errorMsg);
+      }
+    }
   };
 
   // -----------------------------------------
@@ -204,7 +260,7 @@ export default function LeadTable() {
   // -----------------------------------------
   const generateEmail = async (lead: any) => {
     try {
-      setLoadingId(lead.id);
+      setLoadingAction({ leadId: lead.id, action: 'email' });
 
       const res = await callApiWithToken("/api/generateEmail", {
         leadId: lead.id,
@@ -229,7 +285,7 @@ export default function LeadTable() {
       console.error(err);
       toast.error("Email generation failed");
     } finally {
-      setLoadingId(null);
+      setLoadingAction(null);
     }
   };
 
@@ -238,7 +294,7 @@ export default function LeadTable() {
   // -----------------------------------------
   const generateLinkedIn = async (lead: any) => {
     try {
-      setLoadingId(lead.id);
+      setLoadingAction({ leadId: lead.id, action: 'linkedin' });
 
       const res = await callApiWithToken("/api/linkedinMessage", {
         leadId: lead.id,
@@ -260,7 +316,7 @@ export default function LeadTable() {
       console.error(err);
       toast.error("LinkedIn generation failed");
     } finally {
-      setLoadingId(null);
+      setLoadingAction(null);
     }
   };
 
@@ -269,7 +325,7 @@ export default function LeadTable() {
   // -----------------------------------------
   const generateSequence = async (lead: any) => {
     try {
-      setLoadingId(lead.id);
+      setLoadingAction({ leadId: lead.id, action: 'sequence' });
 
       const res = await callApiWithToken("/api/emailSequence", {
         leadId: lead.id,
@@ -286,7 +342,34 @@ export default function LeadTable() {
       console.error(err);
       toast.error("Sequence generation failed");
     } finally {
-      setLoadingId(null);
+      setLoadingAction(null);
+    }
+  };
+
+  // -----------------------------------------
+  // ANALYZE REPLY
+  // -----------------------------------------
+  const analyzeReply = async (replyText: string) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Login required");
+
+      const token = await user.getIdToken();
+      const res = await axios.post(
+        "/api/analyzeReply",
+        {
+          uid: user.uid,
+          replyText,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setReplyAnalyzerData(res.data);
+      setShowReplyInput(false);
+      toast.success("Reply analyzed successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error("Reply analysis failed");
     }
   };
 
@@ -360,10 +443,29 @@ export default function LeadTable() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => toast.error("Bulk Notion export coming soon. Use individual lead export for now.")}
+              >
+                <StickyNote className="mr-2 h-4 w-4" />
+                Export to Notion (Bulk)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <AddLeadDialog onLeadAdded={() => fetchLeads(auth.currentUser?.uid)} />
 
           <div className="flex items-center bg-secondary/50 rounded-lg p-1 border border-border ml-2">
@@ -462,9 +564,9 @@ export default function LeadTable() {
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={loadingId === lead.id}>
+                          <Button variant="ghost" className="h-8 w-8 p-0" disabled={loadingAction?.leadId === lead.id}>
                             <span className="sr-only">Open menu</span>
-                            {loadingId === lead.id ? (
+                            {loadingAction?.leadId === lead.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <MoreHorizontal className="h-4 w-4" />
@@ -485,9 +587,9 @@ export default function LeadTable() {
                               e.preventDefault();
                               generateEmail(lead);
                             }}
-                            disabled={loadingId === lead.id}
+                            disabled={loadingAction?.leadId === lead.id && loadingAction?.action === 'email'}
                           >
-                            {loadingId === lead.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                            {loadingAction?.leadId === lead.id && loadingAction?.action === 'email' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
                             Generate Email
                           </DropdownMenuItem>
                           <DropdownMenuItem
@@ -495,9 +597,9 @@ export default function LeadTable() {
                               e.preventDefault();
                               generateLinkedIn(lead);
                             }}
-                            disabled={loadingId === lead.id}
+                            disabled={loadingAction?.leadId === lead.id && loadingAction?.action === 'linkedin'}
                           >
-                            {loadingId === lead.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Linkedin className="mr-2 h-4 w-4" />}
+                            {loadingAction?.leadId === lead.id && loadingAction?.action === 'linkedin' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Linkedin className="mr-2 h-4 w-4" />}
                             Generate LinkedIn
                           </DropdownMenuItem>
                           <DropdownMenuItem
@@ -505,10 +607,22 @@ export default function LeadTable() {
                               e.preventDefault();
                               generateSequence(lead);
                             }}
-                            disabled={loadingId === lead.id}
+                            disabled={loadingAction?.leadId === lead.id && loadingAction?.action === 'sequence'}
                           >
-                            {loadingId === lead.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Repeat className="mr-2 h-4 w-4" />}
+                            {loadingAction?.leadId === lead.id && loadingAction?.action === 'sequence' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Repeat className="mr-2 h-4 w-4" />}
                             Generate Sequence
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Tools</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => setShowReplyInput(true)}>
+                            <MessageSquare className="mr-2 h-4 w-4" />
+                            Analyze Reply
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportToNotion(lead.id)}>
+                            <StickyNote className="mr-2 h-4 w-4" />
+                            Export to Notion
                           </DropdownMenuItem>
 
                           <DropdownMenuSeparator />
@@ -600,6 +714,19 @@ export default function LeadTable() {
           leadId={previewSequence.leadId}
         />
       )}
+      {replyAnalyzerData && (
+        <ReplyAnalyzerDrawer
+          open={!!replyAnalyzerData}
+          onClose={() => setReplyAnalyzerData(null)}
+          data={replyAnalyzerData}
+        />
+      )}
+      <ReplyInputDialog
+        open={showReplyInput}
+        onClose={() => setShowReplyInput(false)}
+        onAnalyze={analyzeReply}
+        isLoading={loadingAction !== null}
+      />
     </div>
   );
 }

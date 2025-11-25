@@ -4,23 +4,58 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      match /notifications/{notificationId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
+    // Legacy leads (for migration support)
     match /leads/{leadId} {
-  allow create: if request.auth != null
-                && request.resource.data.uid == request.auth.uid;
-
-  allow read, update, delete: if request.auth != null
-                              && resource.data.uid == request.auth.uid;
-}
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
     
-    // TEMPLATES (FIXED)
+    // TEMPLATES
     match /templates/{templateId} {
-      allow create: if request.auth != null
-                    && request.resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
 
-      allow read, update, delete: if request.auth != null
-                                  && resource.data.uid == request.auth.uid;
+    // Workspaces
+    match /workspaces/{workspaceId} {
+      // Allow read if user is in memberIds
+      // Note: memberIds is an array of strings (UIDs)
+      allow read: if request.auth != null && (
+        resource.data.memberIds.hasAny([request.auth.uid]) || 
+        resource.data.ownerUid == request.auth.uid // Fallback
+      );
+      
+      // Allow create (anyone can create a workspace)
+      allow create: if request.auth != null;
+      
+      // Allow update if owner (strict)
+      allow update: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+      
+      // Subcollections
+      match /leads/{leadId} {
+        allow read, write: if request.auth != null && 
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+      }
+      
+      match /events/{eventId} {
+        allow read: if request.auth != null && 
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+          
+        // Allow write only if user is member (for client-side logging if needed, though mostly server-side)
+        allow create: if request.auth != null && 
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+      }
+      
+      match /analytics/{docId} {
+         allow read: if request.auth != null && 
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+      }
     }
   }
 }

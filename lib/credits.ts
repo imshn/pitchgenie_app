@@ -12,7 +12,7 @@ export type { PlanType, ActionType, UserCreditData };
 export { PLAN_CONFIGS, CREDIT_COSTS };
 
 /**
- * Initialize credit fields for a new user
+ * Initialize credit fields for a new workspace
  */
 export function getDefaultCreditData(): UserCreditData {
   const now = Date.now();
@@ -35,81 +35,81 @@ export function getDefaultCreditData(): UserCreditData {
 /**
  * Reset monthly credits if the reset date has passed
  */
-export async function resetMonthlyCredits(uid: string): Promise<void> {
-  const userRef = adminDB.collection("users").doc(uid);
-  const userDoc = await userRef.get();
+export async function resetMonthlyCredits(workspaceId: string): Promise<void> {
+  const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
+  const workspaceDoc = await workspaceRef.get();
   
-  if (!userDoc.exists) {
-    throw new Error("User not found");
+  if (!workspaceDoc.exists) {
+    throw new Error("Workspace not found");
   }
   
-  const userData = userDoc.data() as UserCreditData;
+  const workspaceData = workspaceDoc.data() as UserCreditData;
   const now = Date.now();
   
   // Check if reset is needed
-  if (userData.nextReset && userData.nextReset < now) {
+  if (workspaceData.nextReset && workspaceData.nextReset < now) {
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
     
-    await userRef.update({
-      credits: userData.maxCredits,
+    await workspaceRef.update({
+      credits: workspaceData.maxCredits,
       scraperUsed: 0,
       nextReset: now + thirtyDays,
       updatedAt: now,
     });
     
-    console.log(`[Credits] Monthly reset completed for user ${uid}`);
+    console.log(`[Credits] Monthly reset completed for workspace ${workspaceId}`);
   }
 }
 
 /**
- * Check if user has enough credits for an action
+ * Check if workspace has enough credits for an action
  * Also triggers monthly reset if needed
  */
 export async function checkCredits(
-  uid: string,
+  workspaceId: string,
   actionType: ActionType
 ): Promise<{ ok: boolean; error?: string; credits?: number }> {
   try {
     // First, check and perform monthly reset if needed
-    await resetMonthlyCredits(uid);
+    await resetMonthlyCredits(workspaceId);
     
-    const userRef = adminDB.collection("users").doc(uid);
-    const userDoc = await userRef.get();
+    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
+    const workspaceDoc = await workspaceRef.get();
     
-    if (!userDoc.exists) {
-      return { ok: false, error: "USER_NOT_FOUND" };
+    if (!workspaceDoc.exists) {
+      return { ok: false, error: "WORKSPACE_NOT_FOUND" };
     }
     
-    const userData = userDoc.data() as UserCreditData;
+    const workspaceData = workspaceDoc.data() as UserCreditData;
     const cost = CREDIT_COSTS[actionType];
     
     // Agency plan has unlimited credits
-    if (userData.plan === "agency") {
+    if (workspaceData.plan === "agency") {
       return { ok: true, credits: Infinity };
     }
     
     // Special handling for scrapers on free plan
-    if (actionType === "scraper" && userData.plan === "free") {
-      if (userData.scraperUsed >= userData.scraperLimit) {
+    if (actionType === "scraper" && workspaceData.plan === "free") {
+      if ((workspaceData.scraperUsed || 0) >= (workspaceData.scraperLimit || 3)) {
         return { 
           ok: false, 
           error: "SCRAPER_LIMIT_REACHED",
-          credits: userData.credits 
+          credits: workspaceData.credits 
         };
       }
-      return { ok: true, credits: userData.credits };
+      return { ok: true, credits: workspaceData.credits };
     }
     
     // Check if user has enough credits
-    if (userData.credits < cost) {
+    if (workspaceData.credits < cost) {
       return { 
         ok: false, 
         error: "INSUFFICIENT_CREDITS",
-        credits: userData.credits 
+        credits: workspaceData.credits 
       };
     }
     
-    return { ok: true, credits: userData.credits };
+    return { ok: true, credits: workspaceData.credits };
   } catch (error) {
     console.error("[Credits] Check error:", error);
     return { ok: false, error: "SYSTEM_ERROR" };
@@ -117,28 +117,28 @@ export async function checkCredits(
 }
 
 /**
- * Deduct credits from user account
+ * Deduct credits from workspace account
  */
 export async function deductCredits(
-  uid: string,
+  workspaceId: string,
   actionType: ActionType
 ): Promise<{ success: boolean; credits: number; error?: string }> {
   try {
-    const userRef = adminDB.collection("users").doc(uid);
-    const userDoc = await userRef.get();
+    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
+    const workspaceDoc = await workspaceRef.get();
     
-    if (!userDoc.exists) {
-      return { success: false, credits: 0, error: "USER_NOT_FOUND" };
+    if (!workspaceDoc.exists) {
+      return { success: false, credits: 0, error: "WORKSPACE_NOT_FOUND" };
     }
     
-    const userData = userDoc.data() as UserCreditData;
+    const workspaceData = workspaceDoc.data() as UserCreditData;
     const cost = CREDIT_COSTS[actionType];
     const now = Date.now();
     
     // Agency plan - no deduction
-    if (userData.plan === "agency") {
+    if (workspaceData.plan === "agency") {
       // Log event but don't deduct
-      await userRef.collection("events").add({
+      await workspaceRef.collection("events").add({
         type: "credits_deducted",
         actionType,
         cost: 0,
@@ -148,39 +148,39 @@ export async function deductCredits(
     }
     
     // Free plan scraper - increment scraperUsed instead of deducting credits
-    if (actionType === "scraper" && userData.plan === "free") {
-      const newScraperUsed = (userData.scraperUsed || 0) + 1;
+    if (actionType === "scraper" && workspaceData.plan === "free") {
+      const newScraperUsed = (workspaceData.scraperUsed || 0) + 1;
       
-      await userRef.update({
+      await workspaceRef.update({
         scraperUsed: newScraperUsed,
         updatedAt: now,
       });
       
       // Log event
-      await userRef.collection("events").add({
+      await workspaceRef.collection("events").add({
         type: "scraper_used",
         count: newScraperUsed,
-        limit: userData.scraperLimit,
+        limit: workspaceData.scraperLimit,
         timestamp: now,
       });
       
-      return { success: true, credits: userData.credits };
+      return { success: true, credits: workspaceData.credits };
     }
     
     // Deduct credits for paid plans or non-scraper actions
-    const newCredits = userData.credits - cost;
+    const newCredits = workspaceData.credits - cost;
     
     if (newCredits < 0) {
-      return { success: false, credits: userData.credits, error: "INSUFFICIENT_CREDITS" };
+      return { success: false, credits: workspaceData.credits, error: "INSUFFICIENT_CREDITS" };
     }
     
-    await userRef.update({
+    await workspaceRef.update({
       credits: newCredits,
       updatedAt: now,
     });
     
     // Log analytics event
-    await userRef.collection("events").add({
+    await workspaceRef.collection("events").add({
       type: "credits_deducted",
       actionType,
       cost,
@@ -188,7 +188,7 @@ export async function deductCredits(
       creditsRemaining: newCredits,
     });
     
-    console.log(`[Credits] Deducted ${cost} credits from ${uid}. Remaining: ${newCredits}`);
+    console.log(`[Credits] Deducted ${cost} credits from workspace ${workspaceId}. Remaining: ${newCredits}`);
     
     return { success: true, credits: newCredits };
   } catch (error) {
@@ -198,19 +198,19 @@ export async function deductCredits(
 }
 
 /**
- * Update user's plan and reset credits
+ * Update workspace's plan and reset credits
  */
-export async function updateUserPlan(
-  uid: string,
+export async function updateWorkspacePlan(
+  workspaceId: string,
   newPlan: PlanType
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const userRef = adminDB.collection("users").doc(uid);
+    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
     const planConfig = PLAN_CONFIGS[newPlan];
     const now = Date.now();
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
     
-    await userRef.update({
+    await workspaceRef.update({
       plan: newPlan,
       credits: planConfig.credits,
       maxCredits: planConfig.maxCredits,
@@ -223,13 +223,13 @@ export async function updateUserPlan(
     });
     
     // Log plan change event
-    await userRef.collection("events").add({
+    await workspaceRef.collection("events").add({
       type: "plan_updated",
       newPlan,
       timestamp: now,
     });
     
-    console.log(`[Credits] Updated plan for ${uid} to ${newPlan}`);
+    console.log(`[Credits] Updated plan for workspace ${workspaceId} to ${newPlan}`);
     
     return { success: true };
   } catch (error) {

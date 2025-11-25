@@ -2,23 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap, CreditCard, Settings } from "lucide-react";
+import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap, CreditCard, Settings, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, where, documentId, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { CreditDisplay } from "@/components/credits/CreditDisplay";
 import { UpgradePlanModal } from "@/components/credits/UpgradePlanModal";
 import { PlanType } from "@/lib/credit-types";
+import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Leads", href: "/leads", icon: Users },
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Templates", href: "/templates", icon: FileText },
+  { name: "Team", href: "/team", icon: UserPlus },
   { name: "Profile", href: "/profile", icon: User },
   { name: "Billing", href: "/billing", icon: CreditCard },
   // { name: "s", href: "/logout", icon: LogOut },
@@ -30,13 +32,37 @@ export function SideNav() {
   const router = useRouter();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<PlanType>("free");
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>("");
 
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged((user) => {
       if (user) {
-        const unsubDoc = onSnapshot(doc(db, "users", user.uid), (doc) => {
-          if (doc.exists()) {
-            setCurrentPlan(doc.data().plan || "free");
+        const unsubDoc = onSnapshot(doc(db, "users", user.uid), async (userDoc) => {
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setCurrentPlan(userData.plan || "free");
+            setCurrentWorkspaceId(userData.currentWorkspaceId || "");
+
+            if (userData.workspaces && userData.workspaces.length > 0) {
+              try {
+                // Fetch workspaces details
+                // Note: 'in' query is limited to 10 items usually. 
+                // For MVP this is fine, but for scale we might need to fetch individually or use a different structure.
+                // Fetch all workspaces where user is a member
+                // This is simpler and more robust than fetching by ID list
+                const q = query(
+                  collection(db, "workspaces"),
+                  where("memberIds", "array-contains", user.uid)
+                );
+                const snap = await getDocs(q);
+                setWorkspaces(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+              } catch (e) {
+                console.error("Failed to fetch workspaces", e);
+              }
+            } else {
+              setWorkspaces([]);
+            }
           }
         });
         return () => unsubDoc();
@@ -47,15 +73,15 @@ export function SideNav() {
 
   return (
     <div className="flex h-full flex-col gap-2">
-      <div className="flex h-16 items-center border-b border-border px-6">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl">
+      <div className="flex h-16 items-center border-b border-border px-4">
+        <Link href="/" className="flex items-center gap-2 font-bold text-xl mr-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Zap className="h-5 w-5" />
           </div>
-          <span className="bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-            PitchGenie
-          </span>
         </Link>
+        <div className="flex-1 min-w-0">
+          <WorkspaceSwitcher workspaces={workspaces} currentWorkspaceId={currentWorkspaceId} />
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto py-4 px-4">

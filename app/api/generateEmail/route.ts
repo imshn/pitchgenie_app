@@ -23,12 +23,16 @@ const generateEmailSchema = z.object({
 export async function POST(req: Request) {
   try {
     // ------------------ AUTH & RATE LIMIT ------------------
-    const { uid } = await verifyUser();
+    const { uid, workspaceId } = await verifyUser();
     
     try {
       await limiter.check(10, uid); // 10 requests per minute
     } catch {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
+
+    if (!workspaceId) {
+      return NextResponse.json({ error: "No workspace selected" }, { status: 400 });
     }
 
     // ------------------ INPUT VALIDATION ------------------
@@ -45,13 +49,15 @@ export async function POST(req: Request) {
     const { leadId, name, company, role, website, email } = validation.data;
 
     // ------------------ OWNERSHIP CHECK ------------------
-    const leadDoc = await adminDB.collection("leads").doc(leadId).get();
-    if (!leadDoc.exists || leadDoc.data()?.userId !== uid) {
-      return NextResponse.json({ error: "Lead not found or unauthorized" }, { status: 404 });
+    const leadRef = adminDB.collection("workspaces").doc(workspaceId).collection("leads").doc(leadId);
+    const leadDoc = await leadRef.get();
+    
+    if (!leadDoc.exists) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
     // ------------------ CREDIT CHECK ------------------
-    const creditCheck = await checkCredits(uid, "email");
+    const creditCheck = await checkCredits(workspaceId, "email");
     if (!creditCheck.ok) {
       return NextResponse.json(
         { 
@@ -81,12 +87,15 @@ You write high-performing personalized cold emails.
 
 User Profile:
 Name: ${profile.fullName || ""}
-Position: ${profile.position || ""}
+Role: ${profile.role || profile.position || ""}
 Company: ${profile.company || ""}
-Services: ${profile.services || ""}
-About: ${profile.about || ""}
-Tone: ${profile.personaTone || "professional"}
-Value Proposition: ${profile.valueProposition || ""}
+Website: ${profile.website || ""}
+Location: ${profile.companyLocation || ""}
+Services: ${Array.isArray(profile.services) ? profile.services.join(", ") : (profile.services || "")}
+About User: ${profile.about || ""}
+Company Description: ${profile.companyDescription || profile.valueProposition || ""}
+LinkedIn: ${profile.linkedin || ""}
+Tone: ${profile.persona || profile.personaTone || "professional"}
 
 Lead Info:
 Name: ${name}
@@ -119,7 +128,7 @@ Return ONLY a JSON object:
     const output = JSON.parse(raw);
 
     // ------------------ SAVE TO FIRESTORE ------------------
-    await adminDB.collection("leads").doc(leadId).update({
+    await leadRef.update({
       subject: output.subject,
       body: output.body,
       followUp: output.followUp,
@@ -131,10 +140,11 @@ Return ONLY a JSON object:
       type: "email_generated",
       leadId,
       cost: 1,
+      workspaceId,
     });
 
     // ------------------ DEDUCT CREDITS ------------------
-    await deductCredits(uid, "email");
+    await deductCredits(workspaceId, "email");
 
     return NextResponse.json(output);
   } catch (error: any) {

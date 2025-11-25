@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { adminDB } from "@/lib/firebase-admin";
+import { verifyUser } from "@/lib/verify-user";
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    const decoded = await adminAuth.verifyIdToken(token);
+    const { uid, workspaceId } = await verifyUser();
+    const { leadId, notes } = await req.json();
 
-    const { uid, leadId, notes } = await req.json();
-
-    if (!uid || !leadId) {
+    if (!leadId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    if (uid !== decoded.uid) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (!workspaceId) {
+      return NextResponse.json({ error: "No workspace selected" }, { status: 400 });
     }
 
-    await adminDB.collection("leads").doc(leadId).update({
+    await adminDB.collection("workspaces").doc(workspaceId).collection("leads").doc(leadId).update({
       notes: notes || "",
       notesUpdatedAt: new Date().toISOString(),
     });

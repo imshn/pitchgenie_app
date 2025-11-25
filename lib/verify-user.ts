@@ -1,6 +1,6 @@
 import "server-only";
 import { headers } from "next/headers";
-import { adminAuth } from "./firebase-admin";
+import { adminAuth, adminDB } from "./firebase-admin";
 
 export async function verifyUser() {
   const headersList = await headers();
@@ -14,10 +14,18 @@ export async function verifyUser() {
 
   try {
     const decodedToken = await adminAuth.verifyIdToken(token);
+    const uid = decodedToken.uid;
+
+    // Fetch user's current workspace
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const workspaceId = userData?.currentWorkspaceId;
+
     return {
-      uid: decodedToken.uid,
+      uid,
       email: decodedToken.email,
       token: decodedToken,
+      workspaceId, // Return the workspace ID
     };
   } catch (error) {
     console.error("Auth Error:", error);

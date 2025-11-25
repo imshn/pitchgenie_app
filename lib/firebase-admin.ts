@@ -74,3 +74,4 @@ const app = initAdmin();
 export const adminAuth = app.auth();
 export const adminDB = app.firestore();
 export const adminStorage = app.storage();
+export const FieldValue = admin.firestore.FieldValue;

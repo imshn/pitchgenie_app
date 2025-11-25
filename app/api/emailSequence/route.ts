@@ -20,12 +20,16 @@ const emailSequenceSchema = z.object({
 export async function POST(req: Request) {
   try {
     // ------------------ AUTH & RATE LIMIT ------------------
-    const { uid } = await verifyUser();
+    const { uid, workspaceId } = await verifyUser();
     
     try {
       await limiter.check(10, uid); // 10 requests per minute
     } catch {
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
+
+    if (!workspaceId) {
+      return NextResponse.json({ error: "No workspace selected" }, { status: 400 });
     }
 
     // ------------------ INPUT VALIDATION ------------------
@@ -42,13 +46,15 @@ export async function POST(req: Request) {
     const { leadId, name, role, company, website } = validation.data;
 
     // ------------------ OWNERSHIP CHECK ------------------
-    const leadDoc = await adminDB.collection("leads").doc(leadId).get();
-    if (!leadDoc.exists || leadDoc.data()?.userId !== uid) {
-      return NextResponse.json({ error: "Lead not found or unauthorized" }, { status: 404 });
+    const leadRef = adminDB.collection("workspaces").doc(workspaceId).collection("leads").doc(leadId);
+    const leadDoc = await leadRef.get();
+    
+    if (!leadDoc.exists) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
     // ------------------ CREDIT CHECK ------------------
-    const creditCheck = await checkCredits(uid, "sequence");
+    const creditCheck = await checkCredits(workspaceId, "sequence");
     if (!creditCheck.ok) {
       return NextResponse.json(
         { 
@@ -76,12 +82,23 @@ export async function POST(req: Request) {
     const prompt = `
 Write a 4-step cold email sequence.
 
-Profile:
-${profile.fullName || ""}, ${profile.position || ""}, ${profile.company || ""}
-Services: ${profile.services || ""}
+User Profile:
+Name: ${profile.fullName || ""}
+Role: ${profile.role || profile.position || ""}
+Company: ${profile.company || ""}
+Website: ${profile.website || ""}
+LinkedIn: ${profile.linkedin || ""}
+Location: ${profile.companyLocation || ""}
+Services: ${Array.isArray(profile.services) ? profile.services.join(", ") : (profile.services || "")}
+About: ${profile.about || ""}
+Company Description: ${profile.companyDescription || profile.valueProposition || ""}
+Tone: ${profile.persona || profile.personaTone || "professional"}
 
-Lead:
-${name}, ${role || ""}, ${company}, ${website || ""}
+Lead Info:
+Name: ${name}
+Role: ${role || ""}
+Company: ${company}
+Website: ${website || ""}
 
 Return JSON ONLY:
 {
@@ -102,7 +119,7 @@ Return JSON ONLY:
     const sequence = JSON.parse(raw);
 
     // ------------------ SAVE TO FIRESTORE ------------------
-    await adminDB.collection("leads").doc(leadId).update({
+    await leadRef.update({
       sequence,
       updatedAt: Date.now(),
     });
@@ -112,10 +129,11 @@ Return JSON ONLY:
       type: "sequence_generated",
       leadId,
       cost: 3,
+      workspaceId,
     });
 
     // ------------------ DEDUCT CREDITS ------------------
-    await deductCredits(uid, "sequence");
+    await deductCredits(workspaceId, "sequence");
 
     return NextResponse.json(sequence);
   } catch (err: any) {

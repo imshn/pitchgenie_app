@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TagInput } from "@/components/onboarding/TagInput"; // TagInput component for services
 import AuthGuard from "@/components/AuthGuard";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
@@ -47,14 +48,16 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<any>({
     fullName: "",
     gender: "",
+    role: "",
+    persona: "",
     company: "",
-    position: "",
-    services: "",
-    about: "",
     website: "",
+    companyDescription: "",
+    companyLocation: "",
+    services: [], // Array to match onboarding
+    about: "",
     linkedin: "",
-    personaTone: "professional",
-    valueProposition: "",
+    position: "", // Keep for backward compatibility if needed, or map to role? Onboarding has role. Profile has position. I'll keep both for now but prioritize role.
   });
 
   useEffect(() => {
@@ -71,7 +74,16 @@ export default function SettingsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (res.data.profile) setProfile(res.data.profile);
+      if (res.data.profile) {
+        const data = res.data.profile;
+        setProfile({
+          ...data,
+          // Ensure services is an array
+          services: Array.isArray(data.services) ? data.services : (data.services ? data.services.split(',') : []),
+          // Map personaTone to persona if needed, or prefer persona
+          persona: data.persona || data.personaTone || "",
+        });
+      }
       setLoading(false);
     };
 
@@ -142,31 +154,93 @@ export default function SettingsPage() {
 
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-6 lg:p-10">
-              <div className="max-w-6xl space-y-8">
+              <div className="max-w-4xl space-y-8">
                 {activeTab === "profile" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div>
                       <h3 className="text-lg font-medium text-foreground">Profile Information</h3>
                       <p className="text-sm text-muted-foreground">Update your personal details and online presence.</p>
                     </div>
-                    <div className="grid gap-4">
-                      <div className="grid grid-cols-2 gap-4">
+
+                    {/* Basic Info Section from Onboarding */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                        <User className="h-4 w-4" />
+                        <span>Basic Information</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Full Name</Label>
                           <Input
                             value={profile.fullName}
                             onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                            placeholder="Your name"
                           />
                         </div>
+
                         <div className="space-y-2">
                           <Label>Gender</Label>
+                          <Select value={profile.gender} onValueChange={(value) => setProfile({ ...profile, gender: value })}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select gender" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                              <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Role</Label>
+                          <Select value={profile.role} onValueChange={(value) => setProfile({ ...profile, role: value })}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="founder">Founder</SelectItem>
+                              <SelectItem value="sdr">SDR</SelectItem>
+                              <SelectItem value="consultant">Consultant</SelectItem>
+                              <SelectItem value="marketer">Marketer</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Writing Persona</Label>
+                          <Select value={profile.persona} onValueChange={(value) => setProfile({ ...profile, persona: value })}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select persona" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="founder-tone">Founder Tone</SelectItem>
+                              <SelectItem value="sales-tone">Sales Tone</SelectItem>
+                              <SelectItem value="consultant-tone">Consultant Tone</SelectItem>
+                              <SelectItem value="friendly-tone">Friendly Tone</SelectItem>
+                              <SelectItem value="professional-tone">Professional Tone</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Extras */}
+                      <div className="space-y-2 pt-4">
+                        <Label>LinkedIn Profile</Label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input
-                            value={profile.gender}
-                            onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
-                            placeholder="Optional"
+                            className="pl-9"
+                            value={profile.linkedin}
+                            onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
+                            placeholder="https://linkedin.com/in/..."
                           />
                         </div>
                       </div>
+
                       <div className="space-y-2">
                         <Label>About You</Label>
                         <Textarea
@@ -174,31 +248,8 @@ export default function SettingsPage() {
                           value={profile.about}
                           onChange={(e) => setProfile({ ...profile, about: e.target.value })}
                           className="resize-none"
+                          placeholder="Tell us a bit about yourself..."
                         />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Website</Label>
-                          <div className="relative">
-                            <Globe className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              className="pl-9"
-                              value={profile.website}
-                              onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>LinkedIn</Label>
-                          <div className="relative">
-                            <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              className="pl-9"
-                              value={profile.linkedin}
-                              onChange={(e) => setProfile({ ...profile, linkedin: e.target.value })}
-                            />
-                          </div>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -210,41 +261,65 @@ export default function SettingsPage() {
                       <h3 className="text-lg font-medium text-foreground">Company Details</h3>
                       <p className="text-sm text-muted-foreground">Tell us about your business and role.</p>
                     </div>
-                    <div className="grid gap-4">
-                      <div className="grid grid-cols-2 gap-4">
+
+                    {/* Company Info Section from Onboarding */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                        <Building2 className="h-4 w-4" />
+                        <span>Company Information</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Company Name</Label>
                           <Input
                             value={profile.company}
                             onChange={(e) => setProfile({ ...profile, company: e.target.value })}
+                            placeholder="Your company"
                           />
                         </div>
+
                         <div className="space-y-2">
-                          <Label>Position</Label>
-                          <Input
-                            value={profile.position}
-                            onChange={(e) => setProfile({ ...profile, position: e.target.value })}
+                          <Label>Website</Label>
+                          <div className="relative">
+                            <Globe className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              className="pl-9"
+                              value={profile.website}
+                              onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+                              placeholder="https://example.com"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="md:col-span-2 space-y-2">
+                          <Label>Company Description</Label>
+                          <Textarea
+                            value={profile.companyDescription}
+                            onChange={(e) => setProfile({ ...profile, companyDescription: e.target.value })}
+                            placeholder="What does your company do?"
+                            rows={3}
+                            className="resize-none"
                           />
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Services / Products</Label>
-                        <Textarea
-                          rows={3}
-                          value={profile.services}
-                          onChange={(e) => setProfile({ ...profile, services: e.target.value })}
-                          className="resize-none"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Value Proposition</Label>
-                        <Textarea
-                          rows={3}
-                          value={profile.valueProposition}
-                          onChange={(e) => setProfile({ ...profile, valueProposition: e.target.value })}
-                          className="resize-none"
-                          placeholder="What makes your offer unique?"
-                        />
+
+                        <div className="space-y-2">
+                          <Label>Location</Label>
+                          <Input
+                            value={profile.companyLocation}
+                            onChange={(e) => setProfile({ ...profile, companyLocation: e.target.value })}
+                            placeholder="City, Country"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Services Offered</Label>
+                          <TagInput
+                            value={profile.services || []}
+                            onChange={(tags) => setProfile({ ...profile, services: tags })}
+                            placeholder="Add a service..."
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -253,29 +328,11 @@ export default function SettingsPage() {
                 {activeTab === "preferences" && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div>
-                      <h3 className="text-lg font-medium text-foreground">AI Preferences</h3>
-                      <p className="text-sm text-muted-foreground">Customize how the AI generates content for you.</p>
+                      <h3 className="text-lg font-medium text-foreground">Preferences</h3>
+                      <p className="text-sm text-muted-foreground">Manage your application preferences.</p>
                     </div>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Default Email Tone</Label>
-                        <Select
-                          value={profile.personaTone}
-                          onValueChange={(val) => setProfile({ ...profile, personaTone: val })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a tone" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="professional">Professional</SelectItem>
-                            <SelectItem value="friendly">Friendly</SelectItem>
-                            <SelectItem value="funny">Funny</SelectItem>
-                            <SelectItem value="aggressive">Aggressive</SelectItem>
-                            <SelectItem value="short">Short & Punchy</SelectItem>
-                            <SelectItem value="long">Detailed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                    <div className="p-4 border rounded-lg bg-muted/20 text-center text-muted-foreground text-sm">
+                      More preferences coming soon.
                     </div>
                   </div>
                 )}

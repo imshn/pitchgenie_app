@@ -72,12 +72,9 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 flex flex-col">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <Link href="#" className="text-xs text-primary hover:underline">
-                  Forgot password?
-                </Link>
               </div>
               <Input
                 id="password"
@@ -88,6 +85,9 @@ export default function LoginPage() {
                 required
                 className="bg-background/50"
               />
+                <Link href="#" className="text-xs text-primary hover:underline self-end">
+                  Forgot password?
+                </Link>
             </div>
 
             <Button

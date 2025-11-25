@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const leadRef = adminDB.collection("leads").doc(leadId);
     const leadSnap = await leadRef.get();
 
-    if (!leadSnap.exists || leadSnap.data()?.userId !== uid) {
+    if (!leadSnap.exists || leadSnap.data()?.uid !== uid) {
       return NextResponse.json({ error: "Lead not found or unauthorized" }, { status: 404 });
     }
 

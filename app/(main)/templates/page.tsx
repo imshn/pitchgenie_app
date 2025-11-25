@@ -3,41 +3,107 @@
 import AuthGuard from "@/components/AuthGuard";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { FileText, Plus, MoreVertical, Pencil, Trash } from 'lucide-react';
-import { MagicCard } from "@/components/ui/magic-card";
+import { doc, deleteDoc } from "firebase/firestore";
+import { FileText, Plus, MoreVertical, Pencil, Trash, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
+import Link from "next/link";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import TemplateCreateDialog from "@/components/TemplateCreateDialog";
+import axios from "axios";
+import toast from "react-hot-toast";
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+
+  const loadTemplates = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const token = await user.getIdToken();
+      const res = await axios.get("/api/getTemplates", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setTemplates(res.data.templates || []);
+    } catch (error) {
+      console.error("Failed to load templates:", error);
+      toast.error("Failed to load templates");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      const u = auth.currentUser;
-      if (!u) return;
-      const q = query(collection(db, "templates"), where("uid", "==", u.uid));
-      const snap = await getDocs(q);
-      setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-    const unsub = auth.onAuthStateChanged(async (u) => { if (u) await load(); else setTemplates([]); });
+    const unsub = auth.onAuthStateChanged(async (u) => {
+      if (u) await loadTemplates();
+      else {
+        setTemplates([]);
+        setLoading(false);
+      }
+    });
     return () => unsub();
   }, []);
+
+  const handleDelete = async (templateId: string) => {
+    if (!confirm("Are you sure you want to delete this template?")) return;
+
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      // Delete from Firestore
+      await deleteDoc(doc(db, "users", user.uid, "templates", templateId));
+      toast.success("Template deleted");
+      await loadTemplates();
+    } catch (error) {
+      console.error("Failed to delete template:", error);
+      toast.error("Failed to delete template");
+    }
+  };
+
+  const handleEdit = (template: any) => {
+    setEditingTemplate(template);
+    setShowCreateDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setShowCreateDialog(false);
+    setEditingTemplate(null);
+  };
+
+  const handleSuccess = () => {
+    loadTemplates();
+    handleCloseDialog();
+  };
+
+  if (loading) {
+    return (
+      <AuthGuard>
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </AuthGuard>
+    );
+  }
 
   return (
     <AuthGuard>
       <div className="flex flex-col h-full">
-        <PageHeader 
-          title="Templates" 
+        <PageHeader
+          title="Templates"
           description="Manage your saved email templates for faster outreach."
         >
-          <Button>
+          <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
             New Template
           </Button>
@@ -54,15 +120,16 @@ export default function TemplatesPage() {
                 <p className="text-muted-foreground text-center max-w-sm mt-2">
                   Create templates from your generated emails to reuse them later.
                 </p>
-                <Button variant="outline" className="mt-4">
+                <Button variant="outline" className="mt-4" onClick={() => setShowCreateDialog(true)}>
                   Create your first template
                 </Button>
               </div>
             )}
             {templates.map((t) => (
-              <div 
-                key={t.id} 
-                className="group relative flex flex-col rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md"
+              <Link
+                key={t.id}
+                href={`/templates/${t.id}`}
+                className="group relative flex flex-col rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md hover:border-primary/30"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="p-2 rounded-lg bg-primary/10 text-primary">
@@ -75,30 +142,40 @@ export default function TemplatesPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleEdit(t)}>
                         <Pencil className="w-4 h-4 mr-2" />
                         Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(t.id)}>
                         <Trash className="w-4 h-4 mr-2" />
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                
+
                 <h3 className="font-semibold text-foreground mb-2 line-clamp-1">{t.title || "Untitled Template"}</h3>
+                <p className="text-sm text-muted-foreground font-medium mb-2 line-clamp-1">{t.subject}</p>
                 <p className="text-sm text-muted-foreground line-clamp-4 whitespace-pre-wrap leading-relaxed flex-1 mb-4">
                   {t.body}
                 </p>
-                
+
                 <div className="mt-auto pt-4 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Last updated 2d ago</span>
+                  <span>
+                    {t.createdAt && new Date(t.createdAt).toLocaleDateString()}
+                  </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
+
+        <TemplateCreateDialog
+          open={showCreateDialog}
+          onClose={handleCloseDialog}
+          onSuccess={handleSuccess}
+          editTemplate={editingTemplate}
+        />
       </div>
     </AuthGuard>
   );

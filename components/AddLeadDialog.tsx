@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Plus } from "lucide-react";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, getDocs, query, where, documentId } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
@@ -35,12 +35,23 @@ export default function AddLeadDialog({ onLeadAdded }: AddLeadDialogProps) {
 
     setLoading(true);
     try {
-      await addDoc(collection(db, "leads"), {
+      // 1. Get current workspace ID
+      const userDoc = await getDocs(query(collection(db, "users"), where(documentId(), "==", auth.currentUser.uid)));
+      if (userDoc.empty) throw new Error("User not found");
+
+      const userData = userDoc.docs[0].data();
+      const workspaceId = userData.currentWorkspaceId;
+
+      if (!workspaceId) throw new Error("No workspace found");
+
+      // 2. Add to workspace leads
+      await addDoc(collection(db, "workspaces", workspaceId, "leads"), {
         uid: auth.currentUser.uid,
         ...formData,
         status: "new",
         createdAt: Date.now(),
         tags: [],
+        workspaceId // Redundant but good for querying
       });
       toast.success("Lead added successfully");
       setOpen(false);

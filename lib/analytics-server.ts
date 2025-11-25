@@ -9,21 +9,31 @@ export type EventType =
   | "lead_imported"
   | "credits_deducted";
 
-interface EventData {
+export interface EventData {
   type: EventType;
   leadId?: string | null;
   cost?: number | null;
   meta?: Record<string, any>;
+  workspaceId?: string;
 }
 
 export async function logEvent(uid: string, data: EventData) {
   try {
-    const eventRef = adminDB.collection("users").doc(uid).collection("events").doc();
-    const summaryRef = adminDB.collection("users").doc(uid).collection("analytics").doc("summary");
+    const workspaceId = data.workspaceId;
+    
+    // Determine where to log: Workspace or User
+    // If workspaceId is present, log to workspace. Otherwise fallback to user.
+    const parentRef = workspaceId 
+      ? adminDB.collection("workspaces").doc(workspaceId)
+      : adminDB.collection("users").doc(uid);
+
+    const eventRef = parentRef.collection("events").doc();
+    const summaryRef = parentRef.collection("analytics").doc("summary");
 
     const timestamp = Date.now();
     const eventDoc = {
       ...data,
+      uid, // Keep track of who performed the action
       timestamp,
     };
 
@@ -73,7 +83,7 @@ export async function logEvent(uid: string, data: EventData) {
       }
     });
 
-    console.log(`[Analytics] Event logged: ${data.type} for user ${uid}`);
+    console.log(`[Analytics] Event logged: ${data.type} for ${workspaceId ? `workspace ${workspaceId}` : `user ${uid}`}`);
   } catch (error) {
     console.error("[Analytics] Failed to log event:", error);
     // Don't throw, we don't want to block the main flow

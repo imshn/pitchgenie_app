@@ -57,6 +57,8 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
+import { TourTrigger } from "@/components/tour/TourTrigger";
+
 export default function AnalyticsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -114,12 +116,14 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex flex-col h-full">
+      <TourTrigger />
       <PageHeader
         title="Analytics Dashboard"
         description="Overview of your lead generation performance."
+        data-tour="analytics"
       >
-        <Button variant="outline" onClick={() => router.refresh()}>
-          Refresh Data
+        <Button variant="outline" onClick={() => router.push("/upload")} data-tour="upload">
+          Upload Leads
         </Button>
       </PageHeader>
 

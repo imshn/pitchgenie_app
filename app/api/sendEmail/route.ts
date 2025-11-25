@@ -1,91 +1,138 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { adminDB } from "@/lib/firebase-admin";
 import { logEvent } from "@/lib/analytics-server";
-import { FieldValue } from "firebase-admin/firestore";
 import nodemailer from "nodemailer";
+import { verifyUser } from "@/lib/verify-user";
+import { limiter } from "@/lib/rate-limit";
+import { decrypt } from "@/lib/crypto";
+import { z } from "zod";
+
+const sendEmailSchema = z.object({
+  leadId: z.string().min(1),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+});
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-
-    if (!token) {
-      console.log("❌ Missing auth token");
-      return NextResponse.json({ error: "Missing token" }, { status: 401 });
+    // ------------------ AUTH & RATE LIMIT ------------------
+    const { uid, email } = await verifyUser();
+    
+    try {
+      await limiter.check(20, uid); // 20 requests per minute (increased for sending)
+    } catch {
+      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
     }
 
-    const decoded = await adminAuth.verifyIdToken(token);
-    const uid = decoded.uid;
+    // ------------------ INPUT VALIDATION ------------------
+    const body = await req.json();
+    const validation = sendEmailSchema.safeParse(body);
 
-    const { leadId, subject, body } = await req.json();
-
-    if (!leadId || !subject || !body) {
-      console.log("❌ Missing required fields =>", { leadId, subject, body });
+    if (!validation.success) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Invalid input", details: validation.error.format() },
         { status: 400 }
       );
     }
 
-    // Get Lead
+    const { leadId, subject, body: emailBody } = validation.data;
+
+    // ------------------ OWNERSHIP CHECK ------------------
     const leadRef = adminDB.collection("leads").doc(leadId);
     const leadSnap = await leadRef.get();
 
-    if (!leadSnap.exists) {
-      console.log("❌ Lead not found:", leadId);
-      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    if (!leadSnap.exists || leadSnap.data()?.userId !== uid) {
+      return NextResponse.json({ error: "Lead not found or unauthorized" }, { status: 404 });
     }
 
     const lead = leadSnap.data();
     const sendTo = lead?.email;
 
     if (!sendTo) {
-      console.log("❌ Lead has no email. Lead:", lead);
       return NextResponse.json(
         { error: "Lead has no email property" },
         { status: 400 }
       );
     }
 
-    // Nodemailer SMTP
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.SMTP_EMAIL!,
-        pass: process.env.SMTP_PASSWORD!,
-      },
-    });
+    // ------------------ SMTP CONFIGURATION ------------------
+    let transporter;
+    let fromAddress;
 
+    // Check for custom SMTP settings
+    const smtpDoc = await adminDB
+      .collection("users")
+      .doc(uid)
+      .collection("smtp")
+      .doc("config")
+      .get();
+
+    if (smtpDoc.exists) {
+      const smtp = smtpDoc.data()!;
+      try {
+        const password = decrypt(smtp.password);
+        transporter = nodemailer.createTransport({
+          host: smtp.host,
+          port: smtp.port,
+          secure: smtp.encryption === "ssl",
+          auth: {
+            user: smtp.username,
+            pass: password,
+          },
+          tls: {
+            rejectUnauthorized: false,
+          },
+        });
+        fromAddress = `"${smtp.fromName}" <${smtp.fromEmail}>`;
+      } catch (e) {
+        console.error("Failed to decrypt SMTP password or create transporter:", e);
+        // Fallback to system SMTP or error out? 
+        // For now, let's error out to inform user their SMTP is broken
+        return NextResponse.json(
+          { error: "Custom SMTP configuration failed. Please check your settings." },
+          { status: 400 }
+        );
+      }
+    } else {
+      // System SMTP Fallback
+      transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.SMTP_EMAIL!,
+          pass: process.env.SMTP_PASSWORD!,
+        },
+      });
+      fromAddress = `"${email}" <${process.env.SMTP_EMAIL!}>`;
+    }
+
+    // ------------------ SEND EMAIL ------------------
     await transporter.sendMail({
-      from: `"${decoded.email}" <${process.env.SMTP_EMAIL!}>`,
+      from: fromAddress,
       to: sendTo,
       subject,
-      html: body.replace(/\n/g, "<br/>"),
+      html: emailBody.replace(/\n/g, "<br/>"),
     });
 
-    // Update Lead
+    // ------------------ UPDATE LEAD ------------------
     await leadRef.update({
       lastSentAt: Date.now(),
       status: "contacted",
     });
 
-    // Analytics
-    logEvent(uid, {
-      type: "email_sent",
-      leadId,
-    });
-
-    // Log analytics event for email sent
+    // ------------------ ANALYTICS ------------------
     await logEvent(uid, {
       type: "email_sent",
       leadId,
     });
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("🚨 SEND EMAIL ERROR:", error);
+    if (error.message.includes("Unauthorized")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json(
-      { error: "Failed to send email" },
+      { error: "Failed to send email: " + (error.message || "Unknown error") },
       { status: 500 }
     );
   }

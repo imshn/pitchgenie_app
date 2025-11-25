@@ -35,7 +35,16 @@ export default function SignupPage() {
         email: user.email,
         plan: "free",
         credits: 50,
+        maxCredits: 50,
+        monthlyCredits: 50,
+        scraperLimit: 3,
+        scraperUsed: 0,
+        isUnlimited: false,
+        onboardingCompleted: false,
+        onboardingStep: 1,
+        firstTimeTourCompleted: false,
         createdAt: Date.now(),
+        updatedAt: Date.now(),
       },
       { merge: true }
     );
@@ -49,7 +58,7 @@ export default function SignupPage() {
       await updateProfile(res.user, { displayName: fullName });
       await ensureUserDoc(res.user);
       toast.success("Account created successfully");
-      router.push("/dashboard");
+      router.push("/onboarding/step1");
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Sign up failed");
@@ -59,7 +68,7 @@ export default function SignupPage() {
   };
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) router.push("/dashboard");
+      if (user) router.push("/onboarding/step1");
     });
     return () => unsub();
   }, []);

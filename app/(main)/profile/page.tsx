@@ -23,12 +23,19 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
 import { BillingContent } from "@/components/billing/BillingContent";
 
-const settingsNav = [
+type SettingsNavItem = {
+  id: string;
+  label: string;
+  icon: any;
+  disabled?: boolean;
+};
+
+const settingsNav: SettingsNavItem[] = [
   { id: "profile", label: "Profile", icon: User },
   { id: "company", label: "Company", icon: Building2 },
   { id: "preferences", label: "Preferences", icon: PenTool },
-  { id: "billing", label: "Billing", icon: CreditCard, disabled: false },
-  { id: "notifications", label: "Notifications", icon: Bell, disabled: true },
+  // { id: "billing", label: "Billing", icon: CreditCard, disabled: false },
+  // { id: "notifications", label: "Notifications", icon: Bell, disabled: true },
 ];
 
 export default function SettingsPage() {
@@ -94,8 +101,8 @@ export default function SettingsPage() {
   return (
     <AuthGuard>
       <div className="flex flex-col h-full">
-        <PageHeader 
-          title="Settings" 
+        <PageHeader
+          title="Settings"
           description="Manage your account settings and preferences."
         >
           <Button onClick={saveProfile} disabled={saving}>
@@ -116,14 +123,14 @@ export default function SettingsPage() {
                 {settingsNav.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => !item.disabled && setActiveTab(item.id)}
-                    disabled={item.disabled}
+                    onClick={() => !item?.disabled && setActiveTab(item.id)}
+                    disabled={item?.disabled}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                       activeTab === item.id
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-                      item.disabled && "opacity-50 cursor-not-allowed"
+                      item?.disabled && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <item.icon className="w-4 h-4" />
@@ -273,9 +280,7 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {activeTab === "billing" && (
-                  <BillingContent />
-                )}
+
               </div>
             </div>
           </div>

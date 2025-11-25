@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ClientAuthWrapper from "./clientAuthWrapper";
+import OnboardingGuard from "@/components/auth/OnboardingGuard";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -27,7 +28,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <ClientAuthWrapper>{children}</ClientAuthWrapper>
+          <ClientAuthWrapper>
+            <OnboardingGuard>{children}</OnboardingGuard>
+          </ClientAuthWrapper>
         </ThemeProvider>
       </body>
     </html>

@@ -48,7 +48,7 @@ export function TopNav() {
           <SideNav />
         </SheetContent>
       </Sheet>
-      
+
       <div className="hidden md:flex items-center text-sm text-muted-foreground">
         <span className="font-semibold text-foreground">PitchGenie</span>
         {breadcrumbs.map((crumb, index) => (
@@ -72,7 +72,7 @@ export function TopNav() {
             />
           </div>
         </form>
-        
+
         <Button
           variant="ghost"
           size="icon"
@@ -103,7 +103,7 @@ export function TopNav() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="icon" className="rounded-full">
+            <Button variant="secondary" size="icon" className="rounded-full" data-tour="profile">
               <User className="h-5 w-5" />
               <span className="sr-only">Toggle user menu</span>
             </Button>

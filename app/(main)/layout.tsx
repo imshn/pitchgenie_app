@@ -1,4 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
+import { TourProvider } from "@/components/tour/TourProvider";
+import { Tour } from "@/components/tour/Tour";
 import Toaster from "@/components/ui/toaster";
 import "../globals.css";
 
@@ -8,9 +10,12 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   return (
-    <AppShell>
-      {children}
-      <Toaster />
-    </AppShell>
+    <TourProvider>
+      <AppShell>
+        {children}
+        <Toaster />
+        <Tour />
+      </AppShell>
+    </TourProvider>
   );
 }

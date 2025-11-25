@@ -301,7 +301,7 @@ export default function LeadTable() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
-      const matchesSearch = 
+      const matchesSearch =
         lead.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         lead.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         lead.role?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -333,7 +333,7 @@ export default function LeadTable() {
               className="pl-9"
             />
           </div>
-          
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Status" />
@@ -365,7 +365,7 @@ export default function LeadTable() {
             Export
           </Button>
           <AddLeadDialog onLeadAdded={() => fetchLeads(auth.currentUser?.uid)} />
-          
+
           <div className="flex items-center bg-secondary/50 rounded-lg p-1 border border-border ml-2">
             <Button
               variant={viewMode === "table" ? "secondary" : "ghost"}
@@ -415,15 +415,15 @@ export default function LeadTable() {
                   <TableCell>
                     <div className="flex flex-wrap gap-1 max-w-[200px]">
                       {lead.tags?.map((tag: string) => (
-                        <TagChip 
-                          key={tag} 
-                          tag={tag} 
+                        <TagChip
+                          key={tag}
+                          tag={tag}
                           onRemove={(t) => handleRemoveTag(lead.id, t)}
                           className="text-[10px] h-5 px-1.5"
                         />
                       ))}
-                      <TagInput 
-                        onAddTag={(t) => handleAddTag(lead.id, t)} 
+                      <TagInput
+                        onAddTag={(t) => handleAddTag(lead.id, t)}
                         placeholder="+"
                         className="w-16"
                       />
@@ -453,12 +453,12 @@ export default function LeadTable() {
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       {lead.notes && (
-                         <div className="group relative">
-                           <FileText className="h-4 w-4 text-muted-foreground" />
-                           <div className="absolute bottom-full right-0 mb-2 hidden w-48 rounded bg-popover p-2 text-xs shadow-md group-hover:block z-50 border border-border">
-                             <p className="line-clamp-3">{lead.notes}</p>
-                           </div>
-                         </div>
+                        <div className="group relative">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden w-48 rounded bg-popover p-2 text-xs shadow-md group-hover:block z-50 border border-border">
+                            <p className="line-clamp-3">{lead.notes}</p>
+                          </div>
+                        </div>
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -476,14 +476,14 @@ export default function LeadTable() {
                           <DropdownMenuItem onClick={() => setPreviewEmail({ type: 'details', lead })}>
                             View Details
                           </DropdownMenuItem>
-                          
+
                           <DropdownMenuSeparator />
-                          
-                          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Generate</DropdownMenuLabel>
+
+                          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground" data-tour="ai-buttons">Generate</DropdownMenuLabel>
                           <DropdownMenuItem
                             onClick={(e) => {
-                                e.preventDefault();
-                                generateEmail(lead);
+                              e.preventDefault();
+                              generateEmail(lead);
                             }}
                             disabled={loadingId === lead.id}
                           >
@@ -492,8 +492,8 @@ export default function LeadTable() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => {
-                                e.preventDefault();
-                                generateLinkedIn(lead);
+                              e.preventDefault();
+                              generateLinkedIn(lead);
                             }}
                             disabled={loadingId === lead.id}
                           >
@@ -502,8 +502,8 @@ export default function LeadTable() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => {
-                                e.preventDefault();
-                                generateSequence(lead);
+                              e.preventDefault();
+                              generateSequence(lead);
                             }}
                             disabled={loadingId === lead.id}
                           >
@@ -566,8 +566,8 @@ export default function LeadTable() {
         </div>
       ) : (
         <div className="h-[calc(100vh-220px)] overflow-hidden">
-          <PipelineBoard 
-            leads={filteredLeads} 
+          <PipelineBoard
+            leads={filteredLeads}
             onDragEnd={updateStatus}
             onViewLead={(lead) => setPreviewEmail({ type: 'details', lead })}
           />

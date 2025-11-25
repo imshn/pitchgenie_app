@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap } from "lucide-react";
+import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap, CreditCard, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
@@ -20,6 +20,9 @@ const navItems = [
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Profile", href: "/profile", icon: User },
+  { name: "Billing", href: "/billing", icon: CreditCard },
+  // { name: "s", href: "/logout", icon: LogOut },
+  { name: "Settings", href: "/settings", icon: Settings }
 ];
 
 export function SideNav() {
@@ -62,10 +65,15 @@ export function SideNav() {
           </div>
           {navItems.map((item) => {
             const isActive = pathname === item.href;
+
+            // Add data-tour attributes for tour targets
+            const tourAttr = item.name === "Leads" ? "pipeline" : undefined;
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                data-tour={tourAttr}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                   isActive

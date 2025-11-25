@@ -7,7 +7,7 @@ import { PricingCard } from "@/components/billing/PricingCard";
 import { MagicCard } from "@/components/ui/magic-card";
 import { Loader2, CreditCard, Zap } from "lucide-react";
 import toast from "react-hot-toast";
-import Script from "next/script";
+import { useRazorpay } from "react-razorpay";
 
 declare global {
   interface Window {
@@ -48,6 +48,8 @@ export function BillingContent() {
     return () => unsub();
   }, []);
 
+  const { Razorpay } = useRazorpay();
+
   const handleSubscribe = async (plan: string) => {
     try {
       setProcessingPlan(plan);
@@ -65,29 +67,43 @@ export function BillingContent() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      const { shortUrl, subscriptionId } = res.data;
+      const { subscriptionId } = res.data;
 
-      // Open Razorpay payment page in new tab
-      if (shortUrl) {
-        window.open(shortUrl, "_blank");
-        toast.success("Payment page opened. Complete payment to activate your plan.");
+      if (subscriptionId) {
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          subscription_id: subscriptionId,
+          name: "PitchGenie",
+          description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan Subscription`,
+          handler: async (response: any) => {
+            toast.success("Payment successful! Activating plan...");
+            // Poll for activation or just fetch info
+            setTimeout(() => fetchBillingInfo(), 2000);
+          },
+          prefill: {
+            name: user.displayName || "",
+            email: user.email || "",
+          },
+          theme: {
+            color: "#0F172A",
+            backdrop_color: "rgba(0,0,0,0.85)"
+          },
+          image: "https://pitchgenie.ai/logo.png",
+          modal: {
+            ondismiss: function () {
+              setProcessingPlan(null);
+            }
+          }
+        };
 
-        // Show waiting message
-        setTimeout(() => {
-          toast("Your plan will be activated automatically after successful payment.", {
-            duration: 5000,
-          });
-        }, 1000);
-
-        // Poll for activation (webhook will update Firestore)
-        const pollInterval = setInterval(() => {
-          fetchBillingInfo();
-        }, 3000);
-
-        // Stop polling after 5 minutes
-        setTimeout(() => clearInterval(pollInterval), 300000);
+        const rzp1 = new Razorpay(options as any);
+        rzp1.open();
+        rzp1.on("payment.failed", function (response: any) {
+          toast.error(response.error.description || "Payment failed");
+          setProcessingPlan(null);
+        });
       } else {
-        toast.error("Failed to generate payment link");
+        toast.error("Failed to initialize subscription");
       }
 
     } catch (error: any) {
@@ -108,7 +124,6 @@ export function BillingContent() {
 
   return (
     <div className="space-y-8 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" />
 
       {/* Current Usage */}
       <div className="grid gap-4 md:grid-cols-2">

@@ -1,29 +1,53 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { adminDB } from "@/lib/firebase-admin";
 import { logEvent } from "@/lib/analytics-server";
 import { checkCredits, deductCredits } from "@/lib/credits";
 import OpenAI from "openai";
+import { verifyUser } from "@/lib/verify-user";
+import { limiter } from "@/lib/rate-limit";
+import { z } from "zod";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
+const generateEmailSchema = z.object({
+  leadId: z.string().min(1),
+  name: z.string().min(1),
+  company: z.string().min(1),
+  role: z.string().optional(),
+  website: z.string().optional(),
+  email: z.string().optional(),
+});
+
 export async function POST(req: Request) {
   try {
-    // ------------------ AUTH ------------------
-    const auth = req.headers.get("authorization") || "";
-    const token = auth.replace("Bearer ", "").trim();
-    const decoded = await adminAuth.verifyIdToken(token);
-    const uid = decoded.uid;
+    // ------------------ AUTH & RATE LIMIT ------------------
+    const { uid } = await verifyUser();
+    
+    try {
+      await limiter.check(10, uid); // 10 requests per minute
+    } catch {
+      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
 
-    // ------------------ INPUT ------------------
-    const { leadId, name, company, role, website, email } = await req.json();
+    // ------------------ INPUT VALIDATION ------------------
+    const body = await req.json();
+    const validation = generateEmailSchema.safeParse(body);
 
-    if (!leadId || !name || !company) {
+    if (!validation.success) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Invalid input", details: validation.error.format() },
         { status: 400 }
       );
+    }
+
+    const { leadId, name, company, role, website, email } = validation.data;
+
+    // ------------------ OWNERSHIP CHECK ------------------
+    const leadDoc = await adminDB.collection("leads").doc(leadId).get();
+    if (!leadDoc.exists || leadDoc.data()?.userId !== uid) {
+      return NextResponse.json({ error: "Lead not found or unauthorized" }, { status: 404 });
     }
 
     // ------------------ CREDIT CHECK ------------------
@@ -67,9 +91,9 @@ Value Proposition: ${profile.valueProposition || ""}
 Lead Info:
 Name: ${name}
 Company: ${company}
-Role: ${role}
-Website: ${website}
-Email: ${email}
+Role: ${role || ""}
+Website: ${website || ""}
+Email: ${email || ""}
 
 Generate:
 1) subject line
@@ -113,8 +137,11 @@ Return ONLY a JSON object:
     await deductCredits(uid, "email");
 
     return NextResponse.json(output);
-  } catch (error) {
+  } catch (error: any) {
     console.error("GENERATE EMAIL ERROR:", error);
+    if (error.message.includes("Unauthorized")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json(
       { error: "Failed to generate email" },
       { status: 500 }

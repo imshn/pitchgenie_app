@@ -10,6 +10,7 @@ import { PLAN_CONFIGS, PlanType } from "@/lib/credit-types";
 import { auth } from "@/lib/firebase";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { useRazorpay } from "react-razorpay";
 
 interface UpgradePlanModalProps {
     open: boolean;
@@ -50,6 +51,8 @@ export function UpgradePlanModal({ open, onClose, currentPlan }: UpgradePlanModa
     const [loading, setLoading] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<PlanType | null>(null);
 
+    const { Razorpay } = useRazorpay();
+
     const handleUpgrade = async (plan: PlanType) => {
         if (plan === currentPlan) {
             toast.error("You're already on this plan");
@@ -73,32 +76,58 @@ export function UpgradePlanModal({ open, onClose, currentPlan }: UpgradePlanModa
 
             const token = await user.getIdToken();
 
-            // TODO: RAZORPAY INTEGRATION
-            // This is where you'll integrate Razorpay checkout
-            // 1. Create Razorpay order for the plan
-            // 2. Open Razorpay checkout modal
-            // 3. On successful payment, webhook will trigger plan update
-            // 
-            // For now, we'll directly update the plan (for testing only)
-            // Remove this in production and use payment-verified webhook
-
-            await axios.post(
-                "/api/plan/update",
-                {
-                    uid: user.uid,
-                    plan,
-                },
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                }
+            // Create subscription via API
+            const res = await axios.post(
+                "/api/billing/create-subscription",
+                { plan },
+                { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            toast.success(`Upgraded to ${PLAN_CONFIGS[plan].name} plan!`);
-            onClose();
+            const { subscriptionId } = res.data;
+
+            if (subscriptionId) {
+                const options = {
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                    subscription_id: subscriptionId,
+                    name: "PitchGenie",
+                    description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan Subscription`,
+                    handler: async (response: any) => {
+                        toast.success(`Upgraded to ${PLAN_CONFIGS[plan].name} plan!`);
+                        onClose();
+                    },
+                    prefill: {
+                        name: user.displayName || "",
+                        email: user.email || "",
+                    },
+                    theme: {
+                        color: "#0F172A",
+                        backdrop_color: "rgba(0,0,0,0.85)"
+                    },
+                    image: "https://pitchgenie.ai/logo.png", // Assuming a logo URL or use a placeholder
+                    modal: {
+                        ondismiss: function () {
+                            setLoading(false);
+                            setSelectedPlan(null);
+                        }
+                    }
+                };
+
+                const rzp1 = new Razorpay(options as any);
+                rzp1.open();
+                rzp1.on("payment.failed", function (response: any) {
+                    toast.error(response.error.description || "Payment failed");
+                    setLoading(false);
+                    setSelectedPlan(null);
+                });
+            } else {
+                toast.error("Failed to initialize subscription");
+                setLoading(false);
+                setSelectedPlan(null);
+            }
+
         } catch (error: any) {
             console.error("Upgrade error:", error);
             toast.error(error?.response?.data?.error || "Upgrade failed");
-        } finally {
             setLoading(false);
             setSelectedPlan(null);
         }

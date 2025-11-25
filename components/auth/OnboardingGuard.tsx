@@ -21,8 +21,11 @@ export default function OnboardingGuard({ children }: { children: React.ReactNod
         const checkOnboarding = async () => {
             const user = auth.currentUser;
 
-            // Skip auth pages
+            // Handle auth pages
             if (pathname?.startsWith("/login") || pathname?.startsWith("/signup")) {
+                if (user) {
+                    router.push("/dashboard");
+                }
                 setChecking(false);
                 return;
             }

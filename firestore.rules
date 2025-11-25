@@ -1,51 +1,26 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
 
-    // Users collection
-    // Users can read/write their own document
     match /users/{userId} {
-      allow read, update: if isOwner(userId);
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      // Prevent deletion of user document by client
-      allow delete: if false;
-      
-      // User events subcollection
-      match /events/{eventId} {
-        allow read, write: if isOwner(userId);
-      }
-      
-      // User SMTP settings
-      match /smtp/{configId} {
-        allow read, write: if isOwner(userId);
-      }
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Leads collection
-    // Only owner can read/write
     match /leads/{leadId} {
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+  allow create: if request.auth != null
+                && request.resource.data.uid == request.auth.uid;
 
-      // Timeline subcollection
-      match /timeline/{eventId} {
-        allow read, write: if isAuthenticated() && get(/databases/$(database)/documents/leads/$(leadId)).data.userId == request.auth.uid;
-      }
-    }
+  allow read, update, delete: if request.auth != null
+                              && resource.data.uid == request.auth.uid;
+}
+    
+    // TEMPLATES (FIXED)
+    match /templates/{templateId} {
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
 
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
+      allow read, update, delete: if request.auth != null
+                                  && resource.data.uid == request.auth.uid;
     }
   }
 }

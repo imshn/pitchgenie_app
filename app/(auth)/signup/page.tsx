@@ -66,12 +66,7 @@ export default function SignupPage() {
       setLoading(false);
     }
   };
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) router.push("/onboarding/step1");
-    });
-    return () => unsub();
-  }, []);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-background relative overflow-hidden">
       {/* Background Effects */}

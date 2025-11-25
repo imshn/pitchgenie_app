@@ -6,7 +6,12 @@ import { auth, db } from "@/lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { FcGoogle } from "react-icons/fc";
 
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
+
 export default function GoogleButton(props: { text: string; }) {
+  const router = useRouter();
+
   const handleGoogleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
@@ -34,8 +39,12 @@ export default function GoogleButton(props: { text: string; }) {
         },
         { merge: true }
       );
-    } catch (err) {
+
+      toast.success("Logged in successfully");
+      router.push("/dashboard");
+    } catch (err: any) {
       console.error("Google login error:", err);
+      toast.error(err.message || "Google login failed");
     }
   };
 

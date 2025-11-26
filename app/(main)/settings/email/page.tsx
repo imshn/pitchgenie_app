@@ -216,7 +216,7 @@ export default function EmailSettingsPage() {
                     </Card>
 
                     {/* SMTP Settings */}
-                    <SettingsSectionCard title="Sending Settings (SMTP)" description="Configure how PitchGenie sends emails on your behalf." icon={SendIcon}>
+                    <SettingsSectionCard title="Sending Settings (SMTP)" description="Configure how PitchGenie sends emails on your behalf." icon={Mail}>
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>

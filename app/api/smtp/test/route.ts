@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     console.log(`[POST /api/smtp/test] Testing SMTP for user ${uid}: ${host}:${port}`);
 
     // Create transporter
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host,
       port: portNumber,
       secure: portNumber === 465,

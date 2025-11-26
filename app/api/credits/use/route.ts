@@ -58,7 +58,9 @@ export async function POST(req: Request) {
       type: "credits_deducted",
       cost,
       workspaceId,
-      plan: planData.name
+      meta: {
+        plan: planData.name
+      }
     });
 
     return NextResponse.json({ success: true, remaining: remaining.credits - cost });

@@ -44,9 +44,8 @@ export async function POST(req: Request) {
       await client.connect();
       
       // Get mailbox info
-      const mailboxInfo = await client.getMailboxLock("INBOX");
-      const messageCount = mailboxInfo.exists;
-      mailboxInfo.release();
+      const status = await client.status("INBOX", { messages: true });
+      const messageCount = status.messages;
 
       await client.logout();
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDB, FieldValue } from "@/lib/firebase-admin";
 import { verifyUser } from "@/lib/verify-user";
-import { checkPlanLimit } from "@/app/api/utils/checkPlanLimit";
+import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
 
 export async function POST(req: Request) {
   try {
@@ -27,21 +27,10 @@ export async function POST(req: Request) {
     }
 
     // ---------------------------
-    // CHECK PLAN LIMITS
+    // CHECK PLAN LIMITS & CONSUME
     // ---------------------------
-    // We need to pass the current count. 
-    // Ideally checkPlanLimit handles fetching, but it needs 'usedCount'.
-    // Let's fetch the workspace to get the current count first.
-    const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
-    const currentCount = workspaceDoc.data()?.templateCount || 0;
-
-    const limitError = await checkPlanLimit({
-      workspaceId,
-      feature: "templates",
-      usedCount: currentCount
-    });
-
-    if (limitError) return limitError;
+    // This will check limits and increment usage atomically
+    await checkAndConsumeOperation(uid, "templateSave");
 
     // ---------------------------
     // SAVE TEMPLATE TO FIRESTORE

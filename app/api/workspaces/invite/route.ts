@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDB, FieldValue } from "@/lib/firebase-admin";
 import { verifyUser } from "@/lib/verify-user";
 import { checkPlanLimit } from "@/app/api/utils/checkPlanLimit";
+import { getUserPlan } from "@/lib/server/getUserPlan";
 import nodemailer from "nodemailer";
 
 export async function POST(req: Request) {
@@ -32,11 +33,23 @@ export async function POST(req: Request) {
     // Check member limit using centralized logic
     const currentMemberCount = (workspaceData?.members?.length || 0) + (workspaceData?.invited?.length || 0);
     
-    const limitError = await checkPlanLimit({
-      workspaceId,
-      feature: "members",
-      usedCount: currentMemberCount
-    });
+    const planRaw = await getUserPlan(uid);
+    
+    // Map V2 plan data to V1 format for legacy checkPlanLimit
+    const legacyPlanData: any = {
+        ...planRaw.planData,
+        scraperLimit: planRaw.planData.scraperLightLimit,
+        deepScraper: planRaw.planData.scraperDeepLimit > 0,
+        smtpSendLimit: planRaw.planData.smtpDailyLimit
+    };
+
+    const plan: any = {
+        ...planRaw,
+        workspaceId: planRaw.workspaceId || null,
+        planData: legacyPlanData
+    };
+
+    const limitError = checkPlanLimit(plan, "members", currentMemberCount + 1);
 
     if (limitError) return limitError;
 

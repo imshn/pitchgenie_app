@@ -96,7 +96,7 @@ export async function getUserPlan(
         badge: null,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
-      };
+      } as PlanDocument;
 
       return {
         userId,

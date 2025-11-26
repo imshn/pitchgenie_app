@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyUser } from "@/lib/verify-user";
 import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
-import { adminDB } from "@/lib/firebase-admin";
+import { adminDB, FieldValue } from "@/lib/firebase-admin";
 import { decryptSmtpConfig } from "@/lib/encryption";
 import nodemailer from "nodemailer";
 
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
         .doc(leadId)
         .update({
           lastEmailSent: new Date().toISOString(),
-          emailCount: adminDB.FieldValue.increment(1),
+          emailCount: FieldValue.increment(1),
           updatedAt: new Date().toISOString(),
         });
     }

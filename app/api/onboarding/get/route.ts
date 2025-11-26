@@ -22,8 +22,14 @@ export async function GET(req: NextRequest) {
     const decodedToken = await adminAuth.verifyIdToken(token);
     const uid = decodedToken.uid;
 
-    // 2. Fetch user data from Firestore
-    const userDoc = await adminDB.collection("users").doc(uid).get();
+    // 2. Fetch user data & profile from Firestore
+    const userRef = adminDB.collection("users").doc(uid);
+    const profileRef = userRef.collection("profile").doc("main");
+
+    const [userDoc, profileDoc] = await Promise.all([
+      userRef.get(),
+      profileRef.get()
+    ]);
     
     if (!userDoc.exists) {
       return NextResponse.json(
@@ -33,22 +39,23 @@ export async function GET(req: NextRequest) {
     }
 
     const userData = userDoc.data();
+    const profileData = profileDoc.exists ? profileDoc.data() : {};
 
     // 3. Return onboarding-related fields
     return NextResponse.json({
       onboardingCompleted: userData?.onboardingCompleted || false,
       onboardingStep: userData?.onboardingStep || 1,
       firstTimeTourCompleted: userData?.firstTimeTourCompleted ?? false,
-      name: userData?.name || "",
-      gender: userData?.gender || "",
-      role: userData?.role || "",
-      persona: userData?.persona || "",
-      companyName: userData?.companyName || "",
-      companyWebsite: userData?.companyWebsite || "",
-      companyDescription: userData?.companyDescription || "",
-      companyLocation: userData?.companyLocation || "",
-      servicesOffered: userData?.servicesOffered || [],
-      plan: userData?.plan || "free",
+      name: profileData?.name || userData?.name || "",
+      gender: profileData?.gender || userData?.gender || "",
+      role: profileData?.role || userData?.role || "",
+      persona: profileData?.persona || userData?.persona || "",
+      companyName: profileData?.companyName || userData?.companyName || "",
+      companyWebsite: profileData?.companyWebsite || userData?.companyWebsite || "",
+      companyDescription: profileData?.companyDescription || userData?.companyDescription || "",
+      companyLocation: profileData?.companyLocation || userData?.companyLocation || "",
+      servicesOffered: profileData?.servicesOffered || userData?.servicesOffered || [],
+      plan: userData?.planType || userData?.plan || "free",
       email: userData?.email || decodedToken.email || "",
     });
 

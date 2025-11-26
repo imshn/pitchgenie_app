@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { adminDB, FieldValue } from "@/lib/firebase-admin";
+import { verifyUser } from "@/lib/verify-user";
+import { checkPlanLimit } from "@/app/api/utils/checkPlanLimit";
 
 export async function POST(req: Request) {
   try {
     // ---------------------------
-    // VERIFY AUTH
+    // VERIFY AUTH & WORKSPACE
     // ---------------------------
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
+    const { uid, workspaceId } = await verifyUser();
 
-    if (!token) {
-      return NextResponse.json(
-        { error: "Missing auth token" },
-        { status: 401 }
-      );
+    if (!workspaceId) {
+      return NextResponse.json({ error: "No workspace found" }, { status: 400 });
     }
-
-    const decoded = await adminAuth.verifyIdToken(token);
-    const uid = decoded.uid;
 
     // ---------------------------
     // REQUEST BODY
@@ -32,8 +27,32 @@ export async function POST(req: Request) {
     }
 
     // ---------------------------
+    // CHECK PLAN LIMITS
+    // ---------------------------
+    // We need to pass the current count. 
+    // Ideally checkPlanLimit handles fetching, but it needs 'usedCount'.
+    // Let's fetch the workspace to get the current count first.
+    const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+    const currentCount = workspaceDoc.data()?.templateCount || 0;
+
+    const limitError = await checkPlanLimit({
+      workspaceId,
+      feature: "templates",
+      usedCount: currentCount
+    });
+
+    if (limitError) return limitError;
+
+    // ---------------------------
     // SAVE TEMPLATE TO FIRESTORE
     // ---------------------------
+    // Save to workspace templates collection instead of user templates?
+    // The prompt implies workspace limits, so we should probably save to workspace.
+    // But the original code saved to `users/${uid}/templates`.
+    // I will keep it as is but ALSO track it on the workspace.
+    // Actually, for team workspaces, templates should probably be shared.
+    // But to minimize breakage, I'll stick to the existing path but enforce workspace limits.
+    
     await adminDB
       .collection("users")
       .doc(uid)
@@ -44,7 +63,13 @@ export async function POST(req: Request) {
         body,
         followUp: followUp || "",
         createdAt: Date.now(),
+        workspaceId // Link to workspace
       });
+
+    // Increment workspace template count
+    await adminDB.collection("workspaces").doc(workspaceId).update({
+      templateCount: FieldValue.increment(1)
+    });
 
     return NextResponse.json({ success: true });
   } catch (e) {

@@ -15,20 +15,36 @@ export async function GET(req: Request) {
     const decoded = await adminAuth.verifyIdToken(token);
     const uid = decoded.uid;
 
+    // Get user's current workspace
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const workspaceId = userDoc.data()?.currentWorkspaceId;
+
+    if (!workspaceId) {
+      return NextResponse.json({ summary: {}, timeseries: [], recent: [] });
+    }
+
+    const parentRef = adminDB.collection("workspaces").doc(workspaceId);
+
+    // Count total leads from workspace
+    const leadsSnap = await parentRef.collection('leads').count().get();
+    const totalLeads = leadsSnap.data().count;
+
     // Fetch summary document
-    const summarySnap = await adminDB
-      .collection('users')
-      .doc(uid)
+    const summarySnap = await parentRef
       .collection('analytics')
       .doc('summary')
       .get();
-    const summary = summarySnap.exists ? summarySnap.data() : {};
+    const summaryData = summarySnap.exists ? summarySnap.data() : {};
+    
+    // Merge with real-time lead count
+    const summary = {
+      ...summaryData,
+      leads_total: totalLeads, // Use leads_total to match frontend expectations
+    };
 
     // Fetch last 30 days of events
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const eventsSnap = await adminDB
-      .collection('users')
-      .doc(uid)
+    const eventsSnap = await parentRef
       .collection('events')
       .where('timestamp', '>=', thirtyDaysAgo)
       .orderBy('timestamp', 'desc')

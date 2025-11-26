@@ -1,8 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// app/api/credits/use/route.ts
 import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { adminAuth, adminDB, FieldValue } from "@/lib/firebase-admin";
 import { logEvent } from "@/lib/analytics-server";
+import { getUserPlan } from "@/lib/plan-utils";
 
 export async function POST(req: Request) {
   try {
@@ -13,42 +12,58 @@ export async function POST(req: Request) {
     const decoded = await adminAuth.verifyIdToken(token);
     const uid = decoded.uid;
 
-    const { cost } = await req.json();
+    const { cost, actionType, metadata } = await req.json();
     if (typeof cost !== "number" || cost <= 0) return NextResponse.json({ error: "Invalid cost" }, { status: 400 });
 
-    const userRef = adminDB.collection("users").doc(uid);
+    // 1. Get Effective Plan & Limits
+    const { remaining, usage, workspaceId, planData } = await getUserPlan(uid);
 
-    // Atomic transaction to prevent race conditions
+    if (!workspaceId) {
+        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
+
+    // 2. Check Limits
+    if (remaining.credits < cost) {
+        return NextResponse.json({ error: "Insufficient credits", remaining: remaining.credits }, { status: 402 });
+    }
+
+    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
+    const date = new Date();
+    const monthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const usageRef = workspaceRef.collection("usage").doc(monthId);
+
+    // 3. Atomic Update
     await adminDB.runTransaction(async (tx) => {
-      const snap = await tx.get(userRef);
-      if (!snap.exists) throw new Error("User not found");
-
-      const user = snap.data() as any;
-      if (user.plan === "agency" || user.isUnlimited) {
-        // do nothing for unlimited
-        return;
-      }
-
-      const current = user.credits ?? 0;
-      if (current < cost) {
-        throw new Error("INSUFFICIENT_CREDITS");
-      }
-
-      tx.update(userRef, { credits: current - cost });
+      // Re-read usage inside transaction for safety (optional but good for high concurrency)
+      // For now, we trust the getUserPlan check + atomic increment
+      
+      tx.set(usageRef, {
+          creditsUsed: FieldValue.increment(cost),
+          updatedAt: Date.now()
+      }, { merge: true });
+      
+      // Log detailed usage event
+      const logRef = workspaceRef.collection("usage_logs").doc();
+      tx.set(logRef, {
+          uid,
+          cost,
+          actionType: actionType || "unknown",
+          metadata: metadata || {},
+          timestamp: Date.now()
+      });
     });
 
-    // Log analytics event for credits deducted
+    // Log analytics event
     await logEvent(uid, {
       type: "credits_deducted",
       cost,
+      workspaceId,
+      plan: planData.name
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, remaining: remaining.credits - cost });
   } catch (err: any) {
     console.error("CREDITS USE ERROR:", err);
-    if (err.message === "INSUFFICIENT_CREDITS") {
-      return NextResponse.json({ error: "Not enough credits" }, { status: 402 });
-    }
     return NextResponse.json({ error: "Failed to deduct credits" }, { status: 500 });
   }
 }

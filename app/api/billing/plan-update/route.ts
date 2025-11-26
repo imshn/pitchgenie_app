@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
-import { assignPlanToUser } from "@/lib/billing-utils";
+import { assignPlanToWorkspace } from "@/lib/billing-utils";
 import type { PlanType } from "@/lib/credit-types";
 
 export async function POST(req: NextRequest) {
@@ -71,7 +71,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Assign plan
-    await assignPlanToUser(uid, plan);
+    // 5. Assign plan to workspace
+    const targetUserDoc = await adminDB.collection("users").doc(uid).get();
+    const targetUserData = targetUserDoc.data();
+    const workspaceId = targetUserData?.currentWorkspaceId;
+
+    if (!workspaceId) {
+        return NextResponse.json({ error: "User has no workspace" }, { status: 404 });
+    }
+
+    await assignPlanToWorkspace(workspaceId, plan as any); // Cast plan to PlanId if needed
+
+    console.log(`[Plan Update] ${callerUid} updated workspace ${workspaceId} plan to ${plan}`);
 
     console.log(`[Plan Update] ${callerUid} updated ${uid}'s plan to ${plan}`);
 

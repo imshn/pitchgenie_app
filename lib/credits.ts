@@ -1,115 +1,72 @@
-import { adminDB } from "./firebase-admin";
-import {
-  PlanType,
-  ActionType,
-  PLAN_CONFIGS,
-  CREDIT_COSTS,
-  UserCreditData,
-} from "./credit-types";
+import { adminDB, FieldValue } from "./firebase-admin";
+import { getWorkspacePlan } from "./plan-utils"; // We might need to export a workspace helper from plan-utils
+import { Plan } from "@/types/billing";
 
-// Re-export types for convenience
-export type { PlanType, ActionType, UserCreditData };
-export { PLAN_CONFIGS, CREDIT_COSTS };
+export type ActionType = "email" | "linkedin" | "sequence" | "scraper" | "deliverability";
 
-/**
- * Initialize credit fields for a new workspace
- */
-export function getDefaultCreditData(): UserCreditData {
-  const now = Date.now();
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  
-  return {
-    plan: "free",
-    credits: 50,
-    maxCredits: 50,
-    monthlyCredits: 50,
-    scraperLimit: 3,
-    scraperUsed: 0,
-    nextReset: now + thirtyDays,
-    planUpdatedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-/**
- * Reset monthly credits if the reset date has passed
- */
-export async function resetMonthlyCredits(workspaceId: string): Promise<void> {
-  const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
-  const workspaceDoc = await workspaceRef.get();
-  
-  if (!workspaceDoc.exists) {
-    throw new Error("Workspace not found");
-  }
-  
-  const workspaceData = workspaceDoc.data() as UserCreditData;
-  const now = Date.now();
-  
-  // Check if reset is needed
-  if (workspaceData.nextReset && workspaceData.nextReset < now) {
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    
-    await workspaceRef.update({
-      credits: workspaceData.maxCredits,
-      scraperUsed: 0,
-      nextReset: now + thirtyDays,
-      updatedAt: now,
-    });
-    
-    console.log(`[Credits] Monthly reset completed for workspace ${workspaceId}`);
-  }
-}
+// Credit costs per action
+export const CREDIT_COSTS: Record<ActionType, number> = {
+  email: 1,
+  linkedin: 1,
+  sequence: 3,
+  scraper: 5,
+  deliverability: 1,
+};
 
 /**
  * Check if workspace has enough credits for an action
- * Also triggers monthly reset if needed
  */
 export async function checkCredits(
   workspaceId: string,
   actionType: ActionType
 ): Promise<{ ok: boolean; error?: string; credits?: number }> {
   try {
-    // First, check and perform monthly reset if needed
-    await resetMonthlyCredits(workspaceId);
+    // Fetch Plan & Usage
+    const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+    if (!workspaceDoc.exists) throw new Error("Workspace not found");
     
-    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
-    const workspaceDoc = await workspaceRef.get();
-    
-    if (!workspaceDoc.exists) {
-      return { ok: false, error: "WORKSPACE_NOT_FOUND" };
-    }
-    
-    const workspaceData = workspaceDoc.data() as UserCreditData;
+    const planId = workspaceDoc.data()?.planId || "free";
+    const planDoc = await adminDB.collection("plans").doc(planId).get();
+    const planData = planDoc.data() as Plan;
+
+    const date = new Date();
+    const monthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const usageDoc = await adminDB.collection("workspaces").doc(workspaceId).collection("usage").doc(monthId).get();
+    const usage = usageDoc.data() || { creditsUsed: 0, scraperUsed: 0 };
+
     const cost = CREDIT_COSTS[actionType];
-    
+    const creditsUsed = usage.creditsUsed || 0;
+    const creditLimit = planData.creditLimit;
+
     // Agency plan has unlimited credits
-    if (workspaceData.plan === "agency") {
+    if (planId === "agency") {
       return { ok: true, credits: Infinity };
     }
     
-    // Special handling for scrapers on free plan
-    if (actionType === "scraper" && workspaceData.plan === "free") {
-      if ((workspaceData.scraperUsed || 0) >= (workspaceData.scraperLimit || 3)) {
-        return { 
+    // Check Scraper Limit specifically
+    if (actionType === "scraper") {
+      const scraperLimit = planData.scraperLimit;
+      const scraperUsed = usage.scraperUsed || 0;
+      
+      if (scraperLimit !== -1 && scraperUsed >= scraperLimit) {
+         return { 
           ok: false, 
           error: "SCRAPER_LIMIT_REACHED",
-          credits: workspaceData.credits 
+          credits: creditLimit - creditsUsed
         };
       }
-      return { ok: true, credits: workspaceData.credits };
     }
     
-    // Check if user has enough credits
-    if (workspaceData.credits < cost) {
+    // Check Credits
+    if (creditLimit !== -1 && (creditsUsed + cost) > creditLimit) {
       return { 
         ok: false, 
         error: "INSUFFICIENT_CREDITS",
-        credits: workspaceData.credits 
+        credits: creditLimit - creditsUsed
       };
     }
     
-    return { ok: true, credits: workspaceData.credits };
+    return { ok: true, credits: creditLimit - creditsUsed };
   } catch (error) {
     console.error("[Credits] Check error:", error);
     return { ok: false, error: "SYSTEM_ERROR" };
@@ -124,73 +81,47 @@ export async function deductCredits(
   actionType: ActionType
 ): Promise<{ success: boolean; credits: number; error?: string }> {
   try {
-    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
-    const workspaceDoc = await workspaceRef.get();
-    
-    if (!workspaceDoc.exists) {
-      return { success: false, credits: 0, error: "WORKSPACE_NOT_FOUND" };
-    }
-    
-    const workspaceData = workspaceDoc.data() as UserCreditData;
     const cost = CREDIT_COSTS[actionType];
-    const now = Date.now();
-    
-    // Agency plan - no deduction
-    if (workspaceData.plan === "agency") {
-      // Log event but don't deduct
-      await workspaceRef.collection("events").add({
-        type: "credits_deducted",
-        actionType,
-        cost: 0,
-        timestamp: now,
-      });
-      return { success: true, credits: Infinity };
-    }
-    
-    // Free plan scraper - increment scraperUsed instead of deducting credits
-    if (actionType === "scraper" && workspaceData.plan === "free") {
-      const newScraperUsed = (workspaceData.scraperUsed || 0) + 1;
-      
-      await workspaceRef.update({
-        scraperUsed: newScraperUsed,
-        updatedAt: now,
-      });
-      
-      // Log event
-      await workspaceRef.collection("events").add({
-        type: "scraper_used",
-        count: newScraperUsed,
-        limit: workspaceData.scraperLimit,
-        timestamp: now,
-      });
-      
-      return { success: true, credits: workspaceData.credits };
-    }
-    
-    // Deduct credits for paid plans or non-scraper actions
-    const newCredits = workspaceData.credits - cost;
-    
-    if (newCredits < 0) {
-      return { success: false, credits: workspaceData.credits, error: "INSUFFICIENT_CREDITS" };
-    }
-    
-    await workspaceRef.update({
-      credits: newCredits,
-      updatedAt: now,
+    const date = new Date();
+    const monthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const usageRef = adminDB.collection("workspaces").doc(workspaceId).collection("usage").doc(monthId);
+
+    await adminDB.runTransaction(async (t) => {
+        const doc = await t.get(usageRef);
+        if (!doc.exists) {
+            t.set(usageRef, {
+                creditsUsed: cost,
+                scraperUsed: actionType === "scraper" ? 1 : 0,
+                sequencesUsed: actionType === "sequence" ? 1 : 0,
+                updatedAt: Date.now(),
+                resetDate: Date.now() // approximate
+            });
+        } else {
+            const updates: any = {
+                creditsUsed: FieldValue.increment(cost),
+                updatedAt: Date.now()
+            };
+            
+            if (actionType === "scraper") {
+                updates.scraperUsed = FieldValue.increment(1);
+            }
+            if (actionType === "sequence") {
+                updates.sequencesUsed = FieldValue.increment(1);
+            }
+            
+            t.update(usageRef, updates);
+        }
     });
     
     // Log analytics event
-    await workspaceRef.collection("events").add({
+    await adminDB.collection("workspaces").doc(workspaceId).collection("usage_logs").add({
       type: "credits_deducted",
       actionType,
       cost,
-      timestamp: now,
-      creditsRemaining: newCredits,
+      timestamp: Date.now(),
     });
     
-    console.log(`[Credits] Deducted ${cost} credits from workspace ${workspaceId}. Remaining: ${newCredits}`);
-    
-    return { success: true, credits: newCredits };
+    return { success: true, credits: 0 }; // We don't return exact remaining here to save a read, or we could.
   } catch (error) {
     console.error("[Credits] Deduction error:", error);
     return { success: false, credits: 0, error: "SYSTEM_ERROR" };
@@ -198,39 +129,18 @@ export async function deductCredits(
 }
 
 /**
- * Update workspace's plan and reset credits
+ * Update workspace's plan
+ * (This is largely handled by webhook now, but keeping for manual admin/testing)
  */
 export async function updateWorkspacePlan(
   workspaceId: string,
-  newPlan: PlanType
+  newPlanId: "free" | "starter" | "pro" | "agency"
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
-    const planConfig = PLAN_CONFIGS[newPlan];
-    const now = Date.now();
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    
-    await workspaceRef.update({
-      plan: newPlan,
-      credits: planConfig.credits,
-      maxCredits: planConfig.maxCredits,
-      monthlyCredits: planConfig.monthlyCredits,
-      scraperLimit: planConfig.scraperLimit,
-      scraperUsed: 0,
-      nextReset: now + thirtyDays,
-      planUpdatedAt: now,
-      updatedAt: now,
+    await adminDB.collection("workspaces").doc(workspaceId).update({
+      planId: newPlanId,
+      updatedAt: Date.now(),
     });
-    
-    // Log plan change event
-    await workspaceRef.collection("events").add({
-      type: "plan_updated",
-      newPlan,
-      timestamp: now,
-    });
-    
-    console.log(`[Credits] Updated plan for workspace ${workspaceId} to ${newPlan}`);
-    
     return { success: true };
   } catch (error) {
     console.error("[Credits] Plan update error:", error);

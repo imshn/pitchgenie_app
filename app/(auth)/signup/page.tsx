@@ -33,16 +33,8 @@ export default function SignupPage() {
       {
         fullName: fullName || user.email,
         email: user.email,
-        plan: "free",
-        credits: 50,
-        maxCredits: 50,
-        monthlyCredits: 50,
-        scraperLimit: 3,
-        scraperUsed: 0,
-        isUnlimited: false,
         onboardingCompleted: false,
         onboardingStep: 1,
-        firstTimeTourCompleted: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       },
@@ -54,11 +46,25 @@ export default function SignupPage() {
     e.preventDefault();
     try {
       setLoading(true);
+
+      // Get invite parameter from URL
+      const searchParams = new URLSearchParams(window.location.search);
+      const inviteWorkspaceId = searchParams.get("invite");
+      const redirectPath = searchParams.get("redirect");
+
       const res = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(res.user, { displayName: fullName });
       await ensureUserDoc(res.user);
       toast.success("Account created successfully");
-      router.push("/onboarding/step1");
+
+      // Redirect based on invite parameter
+      if (inviteWorkspaceId && redirectPath) {
+        router.push(redirectPath);
+      } else if (inviteWorkspaceId) {
+        router.push(`/invite/${inviteWorkspaceId}`);
+      } else {
+        router.push("/onboarding/step1");
+      }
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Sign up failed");

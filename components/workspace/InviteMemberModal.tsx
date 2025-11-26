@@ -17,6 +17,7 @@ import { UserPlus, Loader2, Search } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { usePlanLimit } from "@/hooks/usePlanLimit";
 
 interface InviteMemberModalProps {
     onInviteSuccess?: () => void;
@@ -39,6 +40,14 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
+
+    const { plan } = usePlanLimit();
+
+    const memberLimit = plan?.memberLimit ?? 2;
+    const currentMembers = plan?.members?.length || 0;
+    const currentInvited = plan?.invited?.length || 0;
+    const totalMembers = currentMembers + currentInvited;
+    const isLimitReached = totalMembers >= memberLimit;
 
     // Debounce search
     useEffect(() => {
@@ -127,6 +136,16 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
                         Invite a new member to your workspace. They will receive an email invitation.
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* Member Limit Warning */}
+                {isLimitReached && (
+                    <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-500">
+                        <p className="font-medium">⚠️ Member limit reached</p>
+                        <p className="text-xs mt-1">
+                            You've reached the limit of {memberLimit} members for your plan. Upgrade to add more team members.
+                        </p>
+                    </div>
+                )}
                 <form onSubmit={handleInvite} className="grid gap-4 py-4">
                     <div className="grid gap-2 relative">
                         <Label htmlFor="email">Email address</Label>
@@ -142,6 +161,7 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
                             }}
                             required
                             autoComplete="off"
+                            disabled={isLimitReached}
                         />
 
                         {/* Autocomplete Dropdown */}
@@ -178,9 +198,15 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
                         )}
                     </div>
                     <DialogFooter>
-                        <Button type="submit" disabled={loading}>
+                        <Button
+                            type="submit"
+                            disabled={loading || isLimitReached}
+                        >
                             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Send Invitation
+                            {isLimitReached
+                                ? "Upgrade Required"
+                                : "Send Invitation"
+                            }
                         </Button>
                     </DialogFooter>
                 </form>

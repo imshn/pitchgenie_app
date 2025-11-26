@@ -1,26 +1,35 @@
 // app/api/billing/info/route.ts
 import { NextResponse } from "next/server";
-import { adminAuth, adminDB } from "@/lib/firebase-admin";
+import { verifyUser } from "@/lib/verify-user";
+import { adminDB } from "@/lib/firebase-admin";
 
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Missing token" }, { status: 401 });
+    const { uid } = await verifyUser();
 
-    const decoded = await adminAuth.verifyIdToken(token);
-    const uid = decoded.uid;
+    // Get user's current workspace
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const workspaceId = userData?.currentWorkspaceId;
 
-    const userRef = adminDB.collection("users").doc(uid);
-    const snap = await userRef.get();
-    if (!snap.exists) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!workspaceId) {
+      return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
 
-    const data = snap.data() || {};
+    // Get workspace data
+    const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+    const workspaceData = workspaceDoc.data();
+
+    if (!workspaceData) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
     return NextResponse.json({
-      plan: data.plan || "free",
-      credits: data.credits ?? 150,
-      isUnlimited: data.isUnlimited || false,
-      pendingSubscriptionId: data.pendingSubscriptionId || null,
+      planId: workspaceData.planId || "free",
+      credits: workspaceData.credits ?? 50,
+      workspaceName: workspaceData.workspaceName || "My Workspace",
+      pendingSubscriptionId: workspaceData.pendingSubscriptionId || null,
+      razorpaySubscriptionId: workspaceData.razorpaySubscriptionId || null,
     });
   } catch (err) {
     console.error("BILLING INFO ERROR:", err);

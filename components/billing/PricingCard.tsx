@@ -11,6 +11,7 @@ interface PricingCardProps {
   features: string[];
   isCurrent?: boolean;
   isPopular?: boolean;
+  badge?: string;
   onSubscribe?: () => void;
   loading?: boolean;
   buttonText?: string;
@@ -21,55 +22,66 @@ export function PricingCard({
   price,
   description,
   features,
-  isCurrent,
-  isPopular,
+  isCurrent = false,
+  isPopular = false,
+  badge,
   onSubscribe,
-  loading,
-  buttonText = "Upgrade",
+  loading = false,
+  buttonText,
 }: PricingCardProps) {
   return (
     <MagicCard
       className={cn(
-        "relative flex flex-col p-6 h-full",
-        isPopular && "border-primary/50 shadow-lg shadow-primary/10"
+        "relative p-6 transition-all hover:shadow-xl",
+        isCurrent && "ring-2 ring-primary"
       )}
-      gradientColor={isPopular ? "#3b82f6" : undefined}
+      gradientColor={isCurrent ? "#3b82f6" : undefined}
     >
-      {isPopular && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-          <Badge className="bg-primary text-primary-foreground hover:bg-primary">
-            Most Popular
-          </Badge>
-        </div>
-      )}
-
-      <div className="mb-5">
-        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-        <p className="text-sm text-muted-foreground mt-1">{description}</p>
-      </div>
-
-      <div className="mb-5">
-        <span className="text-3xl font-bold text-foreground">{price}</span>
-        {price !== "Free" && <span className="text-muted-foreground">/month</span>}
-      </div>
-
-      <div className="flex-1 space-y-3 mb-6">
-        {features.map((feature, i) => (
-          <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-            <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-            <span>{feature}</span>
+      <div className="flex flex-col h-full">
+        {(isPopular || badge) && (
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+            <Badge className="bg-primary text-primary-foreground hover:bg-primary">
+              {badge || "Most Popular"}
+            </Badge>
           </div>
-        ))}
-      </div>
+        )}
 
-      <Button
-        className={cn("w-full", isCurrent && "opacity-50 cursor-default")}
-        variant={isPopular ? "default" : "outline"}
-        onClick={onSubscribe}
-        disabled={isCurrent || loading}
-      >
-        {isCurrent ? "Current Plan" : loading ? "Processing..." : buttonText}
-      </Button>
+        <div className="mb-4">
+          <h3 className="text-xl font-bold">{title}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-bold">{price}</span>
+            <span className="text-sm text-muted-foreground">/month</span>
+          </div>
+        </div>
+
+        {/* Features - flex-grow pushes button to bottom */}
+        <ul className="space-y-3 mb-6 flex-grow">
+          {features.map((feature, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm">
+              <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+              <span>{feature}</span>
+            </li>
+          ))}
+        </ul>
+
+        {/* Button at bottom */}
+        <Button
+          onClick={onSubscribe}
+          disabled={isCurrent || loading}
+          variant={isCurrent ? "outline" : "default"}
+          className="w-full"
+        >
+          {loading
+            ? "Processing..."
+            : isCurrent
+              ? "Current Plan"
+              : buttonText || "Subscribe"}
+        </Button>
+      </div>
     </MagicCard>
   );
 }

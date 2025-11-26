@@ -43,3 +43,5 @@ next-env.d.ts
 serviceAccountKey.json
 pitchgenie-33c93-firebase-adminsdk-fbsvc-3cd510ee15.json
 pitchgenie-33c93-firebase-adminsdk-fbsvc-3cd510ee15.json
+firebase-debug.log
+scripts/

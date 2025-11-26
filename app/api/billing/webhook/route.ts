@@ -15,10 +15,10 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { adminDB } from "@/lib/firebase-admin";
 import {
-  assignPlanToUser,
+  assignPlanToWorkspace,
   mapPlanIdToPlanName,
   findUserByRazorpayId,
-  cancelUserSubscription,
+  cancelWorkspaceSubscription,
 } from "@/lib/billing-utils";
 
 export async function POST(req: NextRequest) {
@@ -65,6 +65,11 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case "order.paid": {
+        await handleOrderPaid(payload, event);
+        break;
+      }
+
       case "subscription.cancelled": {
         await handleSubscriptionCancelled(payload);
         break;
@@ -90,6 +95,113 @@ export async function POST(req: NextRequest) {
       { error: "Webhook processing failed" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Handle order paid event (One-time payment for plan)
+ */
+async function handleOrderPaid(payload: any, event: any) {
+  try {
+    const order = payload.order.entity;
+    const payment = payload.payment.entity;
+    
+    const notes = order.notes || payment.notes;
+    const { uid, planId, type } = notes;
+
+    if (type !== "subscription_purchase") {
+      console.log(`[Webhook] Ignoring order.paid for non-subscription purchase`);
+      return;
+    }
+
+    if (!uid || !planId) {
+      console.error("[Webhook] Missing uid or planId in order notes");
+      return;
+    }
+
+    // Check for duplicate processing
+    const eventId = event.id;
+    const processedCheck = await adminDB.collection("processedWebhooks").doc(eventId).get();
+    if (processedCheck.exists) {
+      console.log(`[Webhook] Event ${eventId} already processed`);
+      return;
+    }
+
+    console.log(`[Webhook] Processing order.paid for user ${uid}, plan ${planId}`);
+
+    // Get user's current workspace
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const workspaceId = userData?.currentWorkspaceId;
+
+    if (!workspaceId) {
+      console.error(`[Webhook] No workspace found for user ${uid}`);
+      return;
+    }
+
+    // 1. Update Workspace Plan
+    await adminDB.collection("workspaces").doc(workspaceId).update({
+        planId: planId,
+        razorpayOrderId: order.id, // Store order ID instead of subscription ID
+        updatedAt: Date.now()
+    });
+
+    // 2. Sync Plan to User (Owner)
+    await adminDB.collection("users").doc(uid).update({
+        planType: planId,
+        updatedAt: Date.now()
+    });
+
+    // 3. Reset Usage for Current Month
+    const date = new Date();
+    const monthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    await adminDB
+        .collection("workspaces")
+        .doc(workspaceId)
+        .collection("usage")
+        .doc(monthId)
+        .set({
+            creditsUsed: 0,
+            scraperUsed: 0,
+            sequencesUsed: 0,
+            templatesUsed: 0,
+            smtpEmailsSent: 0,
+            aiToneUsed: 0,
+            resetDate: Date.now(),
+            updatedAt: Date.now()
+        });
+
+    // Log analytics event
+    await adminDB
+      .collection("workspaces")
+      .doc(workspaceId)
+      .collection("events")
+      .add({
+        type: "plan_purchased",
+        planId: planId,
+        orderId: order.id,
+        amount: payment.amount,
+        timestamp: Date.now(),
+      });
+
+    // Mark webhook as processed
+    await adminDB
+      .collection("processedWebhooks")
+      .doc(eventId)
+      .set({
+        eventType: "order.paid",
+        orderId: order.id,
+        uid,
+        workspaceId,
+        planId,
+        processedAt: Date.now(),
+      });
+
+    console.log(`[Webhook] Successfully activated ${planId} plan for workspace ${workspaceId}`);
+
+  } catch (error) {
+    console.error("[Webhook] Error handling order paid:", error);
+    throw error;
   }
 }
 
@@ -128,28 +240,67 @@ async function handleSubscriptionActivated(subscription: any, event: any) {
       return;
     }
 
+    // Get user's current workspace
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const workspaceId = userData?.currentWorkspaceId;
+
+    if (!workspaceId) {
+      console.error(`[Webhook] No workspace found for user ${uid}`);
+      return;
+    }
+
     // Map plan ID to plan name
-    const plan = mapPlanIdToPlanName(planId);
-    if (!plan) {
+    const newPlanId = mapPlanIdToPlanName(planId);
+    if (!newPlanId) {
       console.error(`[Webhook] Unknown plan ID: ${planId}`);
       return;
     }
 
-    // Assign plan and credits to user
-    await assignPlanToUser(uid, plan, subscriptionId);
+    // 1. Update Workspace Plan
+    await adminDB.collection("workspaces").doc(workspaceId).update({
+        planId: newPlanId,
+        razorpaySubscriptionId: subscriptionId,
+        updatedAt: Date.now()
+    });
+
+    // 2. Sync Plan to User (Owner)
+    await adminDB.collection("users").doc(uid).update({
+        planType: newPlanId,
+        updatedAt: Date.now()
+    });
+
+    // 3. Reset Usage for Current Month
+    const date = new Date();
+    const monthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    await adminDB
+        .collection("workspaces")
+        .doc(workspaceId)
+        .collection("usage")
+        .doc(monthId)
+        .set({
+            creditsUsed: 0,
+            scraperUsed: 0,
+            sequencesUsed: 0,
+            templatesUsed: 0,
+            smtpEmailsSent: 0,
+            aiToneUsed: 0,
+            resetDate: Date.now(),
+            updatedAt: Date.now()
+        });
 
     // Log analytics event
     await adminDB
-      .collection("users")
-      .doc(uid)
+      .collection("workspaces")
+      .doc(workspaceId)
       .collection("events")
       .add({
         type: "subscription_activated",
-        plan,
+        planId: newPlanId,
         subscriptionId,
         timestamp: Date.now(),
         metadata: {
-          planId,
+          razorpayPlanId: planId,
           customerId,
         },
       });
@@ -162,11 +313,12 @@ async function handleSubscriptionActivated(subscription: any, event: any) {
         eventType: "subscription.activated",
         subscriptionId,
         uid,
-        plan,
+        workspaceId,
+        planId: newPlanId,
         processedAt: Date.now(),
       });
 
-    console.log(`[Webhook] Successfully activated ${plan} plan for user ${uid}`);
+    console.log(`[Webhook] Successfully activated ${newPlanId} plan for workspace ${workspaceId}`);
 
   } catch (error) {
     console.error("[Webhook] Error handling subscription activation:", error);
@@ -189,10 +341,20 @@ async function handleSubscriptionCancelled(subscription: any) {
       return;
     }
 
-    // Cancel user subscription (set to free plan)
-    await cancelUserSubscription(uid);
+    // Get user's current workspace
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const workspaceId = userData?.currentWorkspaceId;
 
-    console.log(`[Webhook] Successfully cancelled subscription for user ${uid}`);
+    if (!workspaceId) {
+      console.error(`[Webhook] No workspace found for user ${uid}`);
+      return;
+    }
+
+    // Cancel workspace subscription (set to free plan)
+    await cancelWorkspaceSubscription(workspaceId);
+
+    console.log(`[Webhook] Successfully cancelled subscription for workspace ${workspaceId}`);
 
   } catch (error) {
     console.error("[Webhook] Error handling subscription cancellation:", error);

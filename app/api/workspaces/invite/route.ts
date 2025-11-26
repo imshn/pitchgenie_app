@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDB, FieldValue } from "@/lib/firebase-admin";
 import { verifyUser } from "@/lib/verify-user";
+import { checkPlanLimit } from "@/app/api/utils/checkPlanLimit";
 import nodemailer from "nodemailer";
 
 export async function POST(req: Request) {
@@ -28,6 +29,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
+    // Check member limit using centralized logic
+    const currentMemberCount = (workspaceData?.members?.length || 0) + (workspaceData?.invited?.length || 0);
+    
+    const limitError = await checkPlanLimit({
+      workspaceId,
+      feature: "members",
+      usedCount: currentMemberCount
+    });
+
+    if (limitError) return limitError;
+
     // Check if already a member
     const isMember = workspaceData?.members.some((m: any) => m.email === email);
     if (isMember) {
@@ -47,23 +59,27 @@ export async function POST(req: Request) {
     // ------------------ SEND EMAIL ------------------
     try {
         const transporter = nodemailer.createTransport({
-            service: "gmail",
+            host: process.env.SMTP_HOST,
+            port: parseInt(process.env.SMTP_PORT || "587"),
+            secure: process.env.SMTP_SECURE === "true",
             auth: {
-                user: process.env.SMTP_EMAIL,
+                user: process.env.SMTP_USER || process.env.SMTP_EMAIL,
                 pass: process.env.SMTP_PASSWORD,
             },
         });
 
-        const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?invite=${workspaceId}`; // Simple link for now
+        const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${workspaceId}`;
 
+        const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || process.env.SMTP_EMAIL;
+        
         await transporter.sendMail({
-            from: `"${senderEmail}" <${process.env.SMTP_EMAIL}>`,
+            from: `"${senderEmail}" <${fromEmail}>`,
             to: email,
-            subject: `You've been invited to join ${workspaceData?.name} on PitchGenie`,
+            subject: `You've been invited to join ${workspaceData?.workspaceName} on PitchGenie`,
             html: `
                 <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2>You've been invited!</h2>
-                    <p><strong>${senderEmail}</strong> has invited you to join the workspace <strong>${workspaceData?.name}</strong> on PitchGenie.</p>
+                    <p><strong>${senderEmail}</strong> has invited you to join the workspace <strong>${workspaceData?.workspaceName}</strong> on PitchGenie.</p>
                     <p>Click the button below to accept the invitation:</p>
                     <a href="${inviteLink}" style="display: inline-block; background-color: #000; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">Accept Invitation</a>
                     <p style="margin-top: 24px; color: #666; font-size: 14px;">If you don't have an account, you'll be prompted to create one.</p>
@@ -84,7 +100,7 @@ export async function POST(req: Request) {
         await adminDB.collection("users").doc(inviteeUid).collection("notifications").add({
             type: "workspace_invite",
             workspaceId,
-            workspaceName: workspaceData?.name,
+            workspaceName: workspaceData?.workspaceName,
             senderEmail,
             createdAt: Date.now(),
             read: false

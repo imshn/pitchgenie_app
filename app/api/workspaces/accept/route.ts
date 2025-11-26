@@ -33,10 +33,17 @@ export async function POST(req: Request) {
 
     const batch = adminDB.batch();
     const joinedWorkspaces = [];
+    let workspaceName = "";
 
     for (const doc of workspacesSnap.docs) {
       const workspaceId = doc.id;
       const workspaceRef = doc.ref;
+      const workspaceData = doc.data();
+      
+      // Store first workspace name for response
+      if (!workspaceName) {
+        workspaceName = workspaceData?.workspaceName || "Workspace";
+      }
 
       // Add to members, remove from invited, add to memberIds
       batch.update(workspaceRef, {
@@ -64,7 +71,7 @@ export async function POST(req: Request) {
 
     await batch.commit();
 
-    return NextResponse.json({ success: true, joined: joinedWorkspaces });
+    return NextResponse.json({ success: true, joined: joinedWorkspaces, workspaceName });
 
   } catch (error: any) {
     console.error("ACCEPT INVITE ERROR:", error);

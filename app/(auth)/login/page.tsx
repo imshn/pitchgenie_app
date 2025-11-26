@@ -26,9 +26,23 @@ export default function LoginPage() {
     e.preventDefault();
     try {
       setLoading(true);
+
+      // Get invite parameter from URL
+      const searchParams = new URLSearchParams(window.location.search);
+      const inviteWorkspaceId = searchParams.get("invite");
+      const redirectPath = searchParams.get("redirect");
+
       await signInWithEmailAndPassword(auth, email, password);
       toast.success("Logged in successfully");
-      router.push("/dashboard");
+
+      // Redirect based on invite parameter
+      if (inviteWorkspaceId && redirectPath) {
+        router.push(redirectPath);
+      } else if (inviteWorkspaceId) {
+        router.push(`/invite/${inviteWorkspaceId}`);
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Login failed");
@@ -85,9 +99,9 @@ export default function LoginPage() {
                 required
                 className="bg-background/50"
               />
-                <Link href="#" className="text-xs text-primary hover:underline self-end">
-                  Forgot password?
-                </Link>
+              <Link href="#" className="text-xs text-primary hover:underline self-end">
+                Forgot password?
+              </Link>
             </div>
 
             <Button

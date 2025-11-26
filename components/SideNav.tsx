@@ -2,83 +2,50 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap, CreditCard, Settings, UserPlus } from "lucide-react";
+import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap, CreditCard, Settings, UserPlus, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import { doc, onSnapshot, collection, query, where, documentId, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useState } from "react";
 import { CreditDisplay } from "@/components/credits/CreditDisplay";
 import { UpgradePlanModal } from "@/components/credits/UpgradePlanModal";
 import { PlanType } from "@/lib/credit-types";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
+import { useWorkspace } from "@/components/providers/WorkspaceProvider";
+import { usePlanData } from "@/hooks/usePlanData";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Leads", href: "/leads", icon: Users },
+  // { name: "Inbox", href: "/inbox", icon: Inbox },
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Team", href: "/team", icon: UserPlus },
-  { name: "Profile", href: "/profile", icon: User },
-  { name: "Billing", href: "/billing", icon: CreditCard },
+  // { name: "Profile", href: "/profile", icon: User },
+  // { name: "Billing", href: "/billing", icon: CreditCard },
   // { name: "s", href: "/logout", icon: LogOut },
-  { name: "Settings", href: "/settings", icon: Settings }
+  // { name: "Settings", href: "/settings", icon: Settings }
 ];
 
 export function SideNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<PlanType>("free");
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
-  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>("");
 
-  useEffect(() => {
-    const unsubAuth = auth.onAuthStateChanged((user) => {
-      if (user) {
-        const unsubDoc = onSnapshot(doc(db, "users", user.uid), async (userDoc) => {
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setCurrentPlan(userData.plan || "free");
-            setCurrentWorkspaceId(userData.currentWorkspaceId || "");
+  const { workspaces, currentWorkspaceId } = useWorkspace();
+  const { data: planData, loading: planLoading } = usePlanData();
 
-            if (userData.workspaces && userData.workspaces.length > 0) {
-              try {
-                // Fetch workspaces details
-                // Note: 'in' query is limited to 10 items usually. 
-                // For MVP this is fine, but for scale we might need to fetch individually or use a different structure.
-                // Fetch all workspaces where user is a member
-                // This is simpler and more robust than fetching by ID list
-                const q = query(
-                  collection(db, "workspaces"),
-                  where("memberIds", "array-contains", user.uid)
-                );
-                const snap = await getDocs(q);
-                setWorkspaces(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-              } catch (e) {
-                console.error("Failed to fetch workspaces", e);
-              }
-            } else {
-              setWorkspaces([]);
-            }
-          }
-        });
-        return () => unsubDoc();
-      }
-    });
-    return () => unsubAuth();
-  }, []);
+  const currentPlan = (planData?.planType as PlanType) || "free";
 
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex h-16 items-center border-b border-border px-4">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl mr-4">
+        {/* <Link href="/" className="flex items-center gap-2 font-bold text-xl mr-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Zap className="h-5 w-5" />
           </div>
-        </Link>
+        </Link> */}
         <div className="flex-1 min-w-0">
           <WorkspaceSwitcher workspaces={workspaces} currentWorkspaceId={currentWorkspaceId} />
         </div>
@@ -116,7 +83,29 @@ export function SideNav() {
       </div>
 
       <div className="mt-auto p-4 border-t border-border space-y-3">
-        <CreditDisplay onUpgradeClick={() => setShowUpgradeModal(true)} />
+        {/* New Credit Display using planData */}
+        {planLoading ? (
+          <div className="h-12 animate-pulse bg-muted rounded-md" />
+        ) : (
+          <div className="rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                {planData?.planData.name || "Free"} Plan
+              </span>
+              <span className="text-xs font-bold">
+                {planData?.remaining.credits ?? 0} / {planData?.planData.creditLimit ?? 50}
+              </span>
+            </div>
+            <div className="h-1.5 w-full bg-background rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, ((planData?.usage.creditsUsed || 0) / (planData?.planData.creditLimit || 1)) * 100)}%`
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         <Button
           variant="ghost"

@@ -1,138 +1,118 @@
 import { NextResponse } from "next/server";
-import { adminDB } from "@/lib/firebase-admin";
-import { logEvent } from "@/lib/analytics-server";
-import nodemailer from "nodemailer";
 import { verifyUser } from "@/lib/verify-user";
-import { limiter } from "@/lib/rate-limit";
-import { decrypt } from "@/lib/crypto";
-import { z } from "zod";
-
-const sendEmailSchema = z.object({
-  leadId: z.string().min(1),
-  subject: z.string().min(1),
-  body: z.string().min(1),
-});
+import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
+import { adminDB } from "@/lib/firebase-admin";
+import { decryptSmtpConfig } from "@/lib/encryption";
+import nodemailer from "nodemailer";
 
 export async function POST(req: Request) {
   try {
-    // ------------------ AUTH & RATE LIMIT ------------------
-    const { uid, email } = await verifyUser();
-    
-    try {
-      await limiter.check(20, uid); // 20 requests per minute (increased for sending)
-    } catch {
-      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-    }
+    const { uid } = await verifyUser();
+    const { to, subject, body, leadId } = await req.json();
 
-    // ------------------ INPUT VALIDATION ------------------
-    const body = await req.json();
-    const validation = sendEmailSchema.safeParse(body);
-
-    if (!validation.success) {
+    if (!to || !subject || !body) {
       return NextResponse.json(
-        { error: "Invalid input", details: validation.error.format() },
+        { error: "to, subject, and body are required" },
         { status: 400 }
       );
     }
 
-    const { leadId, subject, body: emailBody } = validation.data;
+    // Check and consume credits (1 credit + SMTP daily limit)
+    await checkAndConsumeOperation(uid, "smtpSend");
 
-    // ------------------ OWNERSHIP CHECK ------------------
-    const leadRef = adminDB.collection("leads").doc(leadId);
-    const leadSnap = await leadRef.get();
+    // Get user's SMTP config
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const userData = userDoc.data();
 
-    if (!leadSnap.exists || leadSnap.data()?.uid !== uid) {
-      return NextResponse.json({ error: "Lead not found or unauthorized" }, { status: 404 });
-    }
-
-    const lead = leadSnap.data();
-    const sendTo = lead?.email;
-
-    if (!sendTo) {
+    if (!userData?.smtpConfig?.encryptedPassword) {
       return NextResponse.json(
-        { error: "Lead has no email property" },
+        { error: "SMTP configuration not found. Please configure SMTP settings." },
         { status: 400 }
       );
     }
 
-    // ------------------ SMTP CONFIGURATION ------------------
-    let transporter;
-    let fromAddress;
+    // Decrypt SMTP credentials
+    const smtpConfig = decryptSmtpConfig(userData.smtpConfig);
 
-    // Check for custom SMTP settings
-    const smtpDoc = await adminDB
+    // Create nodemailer transporter
+    const transporter = nodemailer.createTransport({
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      secure: smtpConfig.port === 465, // true for 465, false for other ports
+      auth: {
+        user: smtpConfig.user,
+        pass: smtpConfig.password,
+      },
+    });
+
+    // Send email
+    const info = await transporter.sendMail({
+      from: smtpConfig.user,
+      to,
+      subject,
+      html: body,
+    });
+
+    // Log email sent
+    await adminDB
       .collection("users")
       .doc(uid)
-      .collection("smtp")
-      .doc("config")
-      .get();
-
-    if (smtpDoc.exists) {
-      const smtp = smtpDoc.data()!;
-      try {
-        const password = decrypt(smtp.password);
-        transporter = nodemailer.createTransport({
-          host: smtp.host,
-          port: smtp.port,
-          secure: smtp.encryption === "ssl",
-          auth: {
-            user: smtp.username,
-            pass: password,
-          },
-          tls: {
-            rejectUnauthorized: false,
-          },
-        });
-        fromAddress = `"${smtp.fromName}" <${smtp.fromEmail}>`;
-      } catch (e) {
-        console.error("Failed to decrypt SMTP password or create transporter:", e);
-        // Fallback to system SMTP or error out? 
-        // For now, let's error out to inform user their SMTP is broken
-        return NextResponse.json(
-          { error: "Custom SMTP configuration failed. Please check your settings." },
-          { status: 400 }
-        );
-      }
-    } else {
-      // System SMTP Fallback
-      transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.SMTP_EMAIL!,
-          pass: process.env.SMTP_PASSWORD!,
-        },
+      .collection("emailsSent")
+      .add({
+        to,
+        subject,
+        body,
+        leadId: leadId || null,
+        messageId: info.messageId,
+        sentAt: new Date().toISOString(),
       });
-      fromAddress = `"${email}" <${process.env.SMTP_EMAIL!}>`;
+
+    // Update lead if leadId provided
+    if (leadId) {
+      await adminDB
+        .collection("leads")
+        .doc(leadId)
+        .update({
+          lastEmailSent: new Date().toISOString(),
+          emailCount: adminDB.FieldValue.increment(1),
+          updatedAt: new Date().toISOString(),
+        });
     }
 
-    // ------------------ SEND EMAIL ------------------
-    await transporter.sendMail({
-      from: fromAddress,
-      to: sendTo,
-      subject,
-      html: emailBody.replace(/\n/g, "<br/>"),
-    });
+    console.log(`[POST /api/sendEmail] Email sent to ${to} by user ${uid}`);
 
-    // ------------------ UPDATE LEAD ------------------
-    await leadRef.update({
-      lastSentAt: Date.now(),
-      status: "contacted",
+    return NextResponse.json({
+      success: true,
+      messageId: info.messageId,
     });
-
-    // ------------------ ANALYTICS ------------------
-    await logEvent(uid, {
-      type: "email_sent",
-      leadId,
-    });
-
-    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("🚨 SEND EMAIL ERROR:", error);
-    if (error.message.includes("Unauthorized")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.error("[POST /api/sendEmail] Error:", error);
+
+    // Check for specific error codes
+    if (error.message?.includes("INSUFFICIENT_CREDITS")) {
+      return NextResponse.json(
+        { error: "Insufficient credits" },
+        { status: 402 }
+      );
     }
+
+    if (error.message?.includes("SMTP_DAILY_LIMIT")) {
+      return NextResponse.json(
+        { error: "Daily SMTP limit reached for your plan" },
+        { status: 403 }
+      );
+    }
+
+    // SMTP errors
+    if (error.code === "EAUTH" || error.responseCode === 535) {
+      return NextResponse.json(
+        { error: "SMTP authentication failed. Please check your credentials." },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to send email: " + (error.message || "Unknown error") },
+      { error: error.message || "Failed to send email" },
       { status: 500 }
     );
   }

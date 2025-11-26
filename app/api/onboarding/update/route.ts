@@ -53,8 +53,13 @@ export async function POST(req: NextRequest) {
     if (companyLocation !== undefined) updateData.companyLocation = companyLocation;
     if (servicesOffered !== undefined) updateData.servicesOffered = servicesOffered;
 
-    // 4. Update Firestore
-    await adminDB.collection("users").doc(uid).update(updateData);
+    // 4. Update Firestore (Profile Subcollection)
+    await adminDB.collection("users").doc(uid).collection("profile").doc("main").set(updateData, { merge: true });
+    
+    // Also update onboarding step on the user doc itself
+    if (onboardingStep !== undefined) {
+        await adminDB.collection("users").doc(uid).update({ onboardingStep });
+    }
 
     console.log(`[Onboarding] Updated data for user ${uid}`);
 

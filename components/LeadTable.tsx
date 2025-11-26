@@ -49,8 +49,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PipelineBoard } from "./crm/PipelineBoard";
 import { TagChip } from "./crm/TagChip";
 import { TagInput } from "./crm/TagInput";
+import { usePlanLimit } from "@/hooks/usePlanLimit";
 
 export default function LeadTable() {
+  const { checkLimit } = usePlanLimit();
   const [leads, setLeads] = useState<any[]>([]);
   const [loadingAction, setLoadingAction] = useState<{ leadId: string; action: string } | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "pipeline">("table");
@@ -259,17 +261,21 @@ export default function LeadTable() {
   // EMAIL GENERATION
   // -----------------------------------------
   const generateEmail = async (lead: any) => {
+    if (!checkLimit("credits")) return;
+
     try {
       setLoadingAction({ leadId: lead.id, action: 'email' });
 
       const res = await callApiWithToken("/api/generateEmail", {
         leadId: lead.id,
-        uid: auth.currentUser!.uid,
-        name: lead.name,
-        company: lead.company,
-        role: lead.role,
-        email: lead.email,
-        website: lead.website,
+        lead: {
+          name: lead.name,
+          company: lead.company,
+          role: lead.role,
+          email: lead.email,
+          website: lead.website,
+          aiSummary: lead.aiSummary,
+        }
       });
 
       await updateStatus(lead.id, "contacted"); // AUTO-SET STATUS
@@ -283,7 +289,7 @@ export default function LeadTable() {
       });
     } catch (err: any) {
       console.error(err);
-      toast.error("Email generation failed");
+      toast.error(err?.response?.data?.error || "Email generation failed");
     } finally {
       setLoadingAction(null);
     }
@@ -293,28 +299,31 @@ export default function LeadTable() {
   // LINKEDIN
   // -----------------------------------------
   const generateLinkedIn = async (lead: any) => {
+    if (!checkLimit("credits")) return;
+
     try {
       setLoadingAction({ leadId: lead.id, action: 'linkedin' });
 
       const res = await callApiWithToken("/api/linkedinMessage", {
         leadId: lead.id,
-        uid: auth.currentUser!.uid,
-        name: lead.name,
-        role: lead.role,
-        company: lead.company,
-        website: lead.website,
-        companySummary: lead.aiSummary || "",
+        lead: {
+          name: lead.name,
+          role: lead.role,
+          company: lead.company,
+          website: lead.website,
+          aiSummary: lead.aiSummary,
+        }
       });
 
       setPreviewLinkedIn({
-        connect: res.data.connect,
-        followup: res.data.followup,
+        connect: res.data.connectMessage,
+        followup: res.data.followUp,
       });
 
       toast.success("LinkedIn messages ready");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("LinkedIn generation failed");
+      toast.error(err?.response?.data?.error || "LinkedIn generation failed");
     } finally {
       setLoadingAction(null);
     }
@@ -324,23 +333,27 @@ export default function LeadTable() {
   // SEQUENCE
   // -----------------------------------------
   const generateSequence = async (lead: any) => {
+    if (!checkLimit("sequence")) return;
+
     try {
       setLoadingAction({ leadId: lead.id, action: 'sequence' });
 
       const res = await callApiWithToken("/api/emailSequence", {
         leadId: lead.id,
-        uid: auth.currentUser!.uid,
-        name: lead.name,
-        role: lead.role,
-        company: lead.company,
-        website: lead.website,
-        companySummary: lead.aiSummary || "",
+        lead: {
+          name: lead.name,
+          role: lead.role,
+          company: lead.company,
+          website: lead.website,
+          aiSummary: lead.aiSummary,
+        }
       });
 
       setPreviewSequence(res.data);
-    } catch (err) {
+      toast.success("Sequence generated successfully");
+    } catch (err: any) {
       console.error(err);
-      toast.error("Sequence generation failed");
+      toast.error(err?.response?.data?.error || "Sequence generation failed");
     } finally {
       setLoadingAction(null);
     }

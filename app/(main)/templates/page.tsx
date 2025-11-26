@@ -17,8 +17,10 @@ import {
 import TemplateCreateDialog from "@/components/TemplateCreateDialog";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { usePlanLimit } from "@/hooks/usePlanLimit";
 
 export default function TemplatesPage() {
+  const { checkLimit } = usePlanLimit();
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -103,7 +105,9 @@ export default function TemplatesPage() {
           title="Templates"
           description="Manage your saved email templates for faster outreach."
         >
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button onClick={() => {
+            if (checkLimit("templates")) setShowCreateDialog(true);
+          }}>
             <Plus className="w-4 h-4 mr-2" />
             New Template
           </Button>
@@ -120,7 +124,9 @@ export default function TemplatesPage() {
                 <p className="text-muted-foreground text-center max-w-sm mt-2">
                   Create templates from your generated emails to reuse them later.
                 </p>
-                <Button variant="outline" className="mt-4" onClick={() => setShowCreateDialog(true)}>
+                <Button variant="outline" className="mt-4" onClick={() => {
+                  if (checkLimit("templates")) setShowCreateDialog(true);
+                }}>
                   Create your first template
                 </Button>
               </div>

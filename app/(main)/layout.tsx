@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { TourProvider } from "@/components/tour/TourProvider";
+import { WorkspaceProvider } from "@/components/providers/WorkspaceProvider";
 import { Tour } from "@/components/tour/Tour";
 import Toaster from "@/components/ui/toaster";
 import "../globals.css";
@@ -11,11 +12,13 @@ export default function MainLayout({
 }) {
   return (
     <TourProvider>
-      <AppShell>
-        {children}
-        <Toaster />
-        <Tour />
-      </AppShell>
+      <WorkspaceProvider>
+        <AppShell>
+          {children}
+          <Toaster />
+          <Tour />
+        </AppShell>
+      </WorkspaceProvider>
     </TourProvider>
   );
 }

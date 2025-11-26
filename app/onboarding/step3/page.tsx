@@ -151,69 +151,33 @@ export default function OnboardingStep3() {
         );
     }
 
-    const plans = [
-        {
-            name: "Free",
-            plan: "free" as const,
-            price: 0,
-            credits: PLAN_CONFIGS.free.monthlyCredits,
-            scraperLimit: PLAN_CONFIGS.free.scraperLimit,
-            features: [
-                "50 credits/month",
-                "Up to 3 scrapers",
-                "Basic email generation",
-                "Limited LinkedIn integration",
-            ],
-            isRecommended: false,
-        },
-        {
-            name: "Starter",
-            plan: "starter" as const,
-            price: 1499,
-            credits: PLAN_CONFIGS.starter.monthlyCredits,
-            scraperLimit: PLAN_CONFIGS.starter.scraperLimit,
-            features: [
-                "600 credits/month",
-                "Unlimited scrapers",
-                "Advanced email generation",
-                "Full LinkedIn integration",
-                "Sequence automation",
-            ],
-            isRecommended: true,
-        },
-        {
-            name: "Pro",
-            plan: "pro" as const,
-            price: 2499,
-            credits: PLAN_CONFIGS.pro.monthlyCredits,
-            scraperLimit: PLAN_CONFIGS.pro.scraperLimit,
-            features: [
-                "1,500 credits/month",
-                "Unlimited scrapers",
-                "Priority AI generation",
-                "Advanced analytics",
-                "CRM integration",
-                "Email support",
-            ],
-            isRecommended: false,
-        },
-        {
-            name: "Agency",
-            plan: "agency" as const,
-            price: 4999,
-            credits: PLAN_CONFIGS.agency.monthlyCredits,
-            scraperLimit: PLAN_CONFIGS.agency.scraperLimit,
-            features: [
-                "Unlimited credits",
-                "Unlimited scrapers",
-                "White-label options",
-                "Dedicated support",
-                "Custom integrations",
-                "Priority processing",
-            ],
-            isRecommended: false,
-        },
-    ];
+    const [plans, setPlans] = useState<any[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(true);
+
+    useEffect(() => {
+        const fetchPlans = async () => {
+            try {
+                const res = await axios.get("/api/plans");
+                if (res.data.plans) {
+                    setPlans(res.data.plans);
+                }
+            } catch (error) {
+                console.error("Failed to fetch plans:", error);
+                toast.error("Failed to load plans");
+            } finally {
+                setLoadingPlans(false);
+            }
+        };
+        fetchPlans();
+    }, []);
+
+    if (loadingPlans) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen p-4 py-12 relative">
@@ -243,20 +207,20 @@ export default function OnboardingStep3() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     {plans.map((plan, index) => (
                         <motion.div
-                            key={plan.plan}
+                            key={plan.id}
                             initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.2 + index * 0.1 }}
                         >
                             <PlanCard
                                 name={plan.name}
-                                price={plan.price}
-                                credits={plan.credits}
+                                price={plan.priceMonthly}
+                                credits={plan.creditLimit}
                                 scraperLimit={plan.scraperLimit}
                                 features={plan.features}
-                                isSelected={selectedPlan === plan.plan}
-                                isRecommended={plan.isRecommended}
-                                onSelect={() => setSelectedPlan(plan.plan)}
+                                isSelected={selectedPlan === plan.id}
+                                isRecommended={plan.badge === "Best value"}
+                                onSelect={() => setSelectedPlan(plan.id)}
                             />
                         </motion.div>
                     ))}

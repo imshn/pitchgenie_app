@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 // import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,11 +13,12 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Loader2, Trash2, Mail } from "lucide-react";
+import { Loader2, Trash2, Mail, LogOut } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { AppDialog, useAppDialog } from "@/components/ui/app-dialog";
 
 // Temporary interface until we have shared types
 interface Member {
@@ -36,7 +38,10 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
     const [invites, setInvites] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState<string | null>(null);
+    const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
     const { user, loading: authLoading } = useAuth();
+    const { dialogConfig, setDialogConfig, showPrompt, showSuccess, showError } = useAppDialog();
+    const router = useRouter();
 
     const fetchMembers = async () => {
         if (!user) return;
@@ -85,6 +90,8 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
 
             if (!workspaceId) throw new Error("Failed to resolve workspace");
 
+            setCurrentWorkspaceId(workspaceId);
+
             // 3. Fetch members
             const res = await fetch(`/api/workspaces/members?workspaceId=${workspaceId}`, {
                 headers: {
@@ -113,19 +120,136 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
     }, [refreshTrigger, user, authLoading]);
 
     const handleRemove = async (memberUid: string) => {
-        if (!confirm("Are you sure you want to remove this member?")) return;
+        showPrompt(
+            "Remove Member",
+            "Are you sure you want to remove this member from the workspace?",
+            async () => {
+                setRemoving(memberUid);
+                try {
+                    const token = await user?.getIdToken();
+                    const res = await fetch("/api/workspaces/remove", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ workspaceId: currentWorkspaceId, memberUid })
+                    });
 
-        setRemoving(memberUid);
-        try {
-            // We need to implement the actual remove call here or use the API
-            // For now, keeping existing structure but cleaning up logs if any were added
-        } catch (error) {
-            console.error(error);
-        }
+                    if (!res.ok) {
+                        const data = await res.json();
+                        throw new Error(data.error || "Failed to remove member");
+                    }
+
+                    showSuccess("Member Removed", "The member has been successfully removed from the workspace.");
+                    fetchMembers();
+                } catch (error: any) {
+                    console.error(error);
+                    showError("Error", error.message || "Failed to remove member");
+                } finally {
+                    setRemoving(null);
+                }
+            },
+            undefined,
+            "Remove",
+            "Cancel"
+        );
     };
+
+    const handleCancelInvite = async (email: string) => {
+        showPrompt(
+            "Cancel Invitation",
+            `Are you sure you want to cancel the invitation for ${email}?`,
+            async () => {
+                try {
+                    const token = await user?.getIdToken();
+                    const res = await fetch("/api/workspaces/cancel-invite", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ workspaceId: currentWorkspaceId, email })
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json();
+                        throw new Error(data.error || "Failed to cancel invitation");
+                    }
+
+                    showSuccess("Invitation Cancelled", "The invitation has been successfully cancelled.");
+                    fetchMembers();
+                } catch (error: any) {
+                    console.error(error);
+                    showError("Error", error.message || "Failed to cancel invitation");
+                }
+            },
+            undefined,
+            "Cancel Invite",
+            "Keep Invite"
+        );
+    };
+
+    const handleLeaveWorkspace = async () => {
+        showPrompt(
+            "Leave Workspace",
+            "Are you sure you want to leave this workspace? You'll need to be invited again to rejoin.",
+            async () => {
+                try {
+                    const token = await user?.getIdToken();
+                    const res = await fetch("/api/workspaces/leave", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ workspaceId: currentWorkspaceId })
+                    });
+
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(data.error || "Failed to leave workspace");
+                    }
+
+                    showSuccess(
+                        "Left Workspace",
+                        "You have successfully left the workspace.",
+                        () => {
+                            router.push("/dashboard");
+                            window.location.reload();
+                        }
+                    );
+                } catch (error: any) {
+                    console.error(error);
+                    showError("Error", error.message || "Failed to leave workspace");
+                }
+            },
+            undefined,
+            "Leave Workspace",
+            "Stay"
+        );
+    };
+
+    const currentUserMember = members.find(m => m.uid === user?.uid);
+    const isOwner = currentUserMember?.role === "owner";
 
     return (
         <div className="space-y-6">
+            {!isOwner && (
+                <div className="flex justify-end">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                        onClick={handleLeaveWorkspace}
+                    >
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Leave Workspace
+                    </Button>
+                </div>
+            )}
+
             <div className="rounded-md border">
                 <Table>
                     <TableHeader>
@@ -167,7 +291,7 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
                                             {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "-"}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            {member.role !== "owner" && (
+                                            {member.role !== "owner" && member.uid !== user?.uid && (
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
@@ -205,16 +329,8 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="text-muted-foreground"
-                                                onClick={() => {
-                                                    // Cancel invite logic (reuse remove API?)
-                                                    // The remove API expects memberUid, but for invites we might need a different handling
-                                                    // or pass email as memberUid?
-                                                    // The remove API currently looks for memberUid in members array.
-                                                    // It doesn't handle invites.
-                                                    // I need to update remove API to handle invites too.
-                                                    toast.error("Cancel invite not implemented yet");
-                                                }}
+                                                className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                                onClick={() => handleCancelInvite(email)}
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
@@ -226,6 +342,11 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
                     </TableBody>
                 </Table>
             </div>
+
+            <AppDialog
+                {...dialogConfig}
+                onOpenChange={(open) => setDialogConfig({ ...dialogConfig, open })}
+            />
         </div>
     );
 }

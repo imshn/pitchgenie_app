@@ -12,6 +12,10 @@ export const PLAN_CONFIGS = {
     maxCredits: 50,
     monthlyCredits: 50,
     scraperLimit: 3,
+    sequenceLimit: 1,
+    templateLimit: 3,
+    memberLimit: 2,
+    toneLimit: 2,
     price: 0,
   },
   starter: {
@@ -20,6 +24,10 @@ export const PLAN_CONFIGS = {
     maxCredits: 600,
     monthlyCredits: 600,
     scraperLimit: Infinity,
+    sequenceLimit: 5,
+    templateLimit: 10,
+    memberLimit: 5,
+    toneLimit: 5,
     price: 1499,
   },
   pro: {
@@ -28,6 +36,10 @@ export const PLAN_CONFIGS = {
     maxCredits: 1500,
     monthlyCredits: 1500,
     scraperLimit: Infinity,
+    sequenceLimit: Infinity,
+    templateLimit: Infinity,
+    memberLimit: 10,
+    toneLimit: Infinity,
     price: 2499,
   },
   agency: {
@@ -36,6 +48,10 @@ export const PLAN_CONFIGS = {
     maxCredits: Infinity,
     monthlyCredits: Infinity,
     scraperLimit: Infinity,
+    sequenceLimit: Infinity,
+    templateLimit: Infinity,
+    memberLimit: Infinity,
+    toneLimit: Infinity,
     price: 4999,
   },
 } as const;
@@ -50,6 +66,7 @@ export const CREDIT_COSTS: Record<ActionType, number> = {
 };
 
 // User credit fields interface
+// User credit fields interface
 export interface UserCreditData {
   plan: PlanType;
   credits: number;
@@ -61,4 +78,29 @@ export interface UserCreditData {
   planUpdatedAt: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface WorkspacePlan {
+  planId: string;
+  credits: number;
+  
+  // Limits (-1 for unlimited)
+  scraperLimit: number;
+  sequenceLimit: number;
+  templateLimit: number;
+  memberLimit: number;
+  toneLimit: number;
+  
+  // Usage
+  scraperUsed: number;
+  sequenceUsed: number;
+  templateCount: number;
+  toneUsed: number;
+  
+  // Features
+  apiAccess: boolean;
+  deepScraper: boolean;
+  analyticsLevel: number;
+  
+  [key: string]: any;
 }

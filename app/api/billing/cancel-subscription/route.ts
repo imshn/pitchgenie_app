@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDB } from "@/lib/firebase-admin";
 import { razorpay } from "@/lib/razorpay";
-import { cancelUserSubscription } from "@/lib/billing-utils";
+import { cancelWorkspaceSubscription } from "@/lib/billing-utils";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const decodedToken = await adminAuth.verifyIdToken(token);
     const uid = decodedToken.uid;
 
-    // 2. Get user's subscription ID
+    // 2. Get user's workspace
     const userDoc = await adminDB.collection("users").doc(uid).get();
     if (!userDoc.exists) {
       return NextResponse.json(
@@ -34,25 +34,37 @@ export async function POST(req: NextRequest) {
     }
 
     const userData = userDoc.data();
-    const subscriptionId = userData?.razorpaySubscriptionId;
+    const workspaceId = userData?.currentWorkspaceId;
+    const subscriptionId = userData?.razorpaySubscriptionId; // Still on user for now? Or workspace? 
+    // Assuming subscription is on workspace now based on billing-utils logic, but let's check where it's stored.
+    // In billing-utils, assignPlanToWorkspace updates workspace with subscriptionId.
+    // So we should look at workspace for subscriptionId.
+    
+    if (!workspaceId) {
+         return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
 
-    if (!subscriptionId) {
+    const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+    const workspaceData = workspaceDoc.data();
+    const workspaceSubscriptionId = workspaceData?.razorpaySubscriptionId;
+
+    if (!workspaceSubscriptionId) {
       return NextResponse.json(
-        { error: "No active subscription found" },
+        { error: "No active subscription found for this workspace" },
         { status: 400 }
       );
     }
 
     // 3. Cancel subscription in Razorpay
     const subscription: any = await razorpay.subscriptions.cancel(
-      subscriptionId,
+      workspaceSubscriptionId,
       true // cancel_at_cycle_end = true (don't cancel immediately)
     );
 
     // 4. Cancel in Firestore (use utility function)
-    await cancelUserSubscription(uid);
+    await cancelWorkspaceSubscription(workspaceId);
 
-    console.log(`[Billing] Cancelled subscription ${subscriptionId} for user ${uid}`);
+    console.log(`[Billing] Cancelled subscription ${workspaceSubscriptionId} for workspace ${workspaceId}`);
 
     return NextResponse.json({
       success: true,

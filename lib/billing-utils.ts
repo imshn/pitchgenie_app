@@ -1,11 +1,10 @@
 import { adminDB } from "./firebase-admin";
-import { PLAN_CONFIGS } from "./credit-types";
-import type { PlanType } from "./credit-types";
+import { PlanId } from "@/types/billing";
 import { calculateProRataCredits } from "./pro-rata";
 
 // Map Razorpay plan IDs to our plan names
-export function mapPlanIdToPlanName(planId: string): PlanType | null {
-  const planMapping: Record<string, PlanType> = {
+export function mapPlanIdToPlanName(planId: string): PlanId | null {
+  const planMapping: Record<string, PlanId> = {
     [process.env.RAZORPAY_PLAN_STARTER || ""]: "starter",
     [process.env.RAZORPAY_PLAN_PRO || ""]: "pro",
     [process.env.RAZORPAY_PLAN_AGENCY || ""]: "agency",
@@ -15,32 +14,40 @@ export function mapPlanIdToPlanName(planId: string): PlanType | null {
 }
 
 /**
- * Assign a plan to a user and update credits (with pro-rata calculation)
+ * Assign a plan to a workspace and update credits (with pro-rata calculation)
  * Called by webhook and admin routes
  */
-export async function assignPlanToUser(
-  uid: string,
-  plan: PlanType,
+export async function assignPlanToWorkspace(
+  workspaceId: string,
+  planId: PlanId,
   subscriptionId?: string,
   useProRata: boolean = true
 ): Promise<void> {
-  const planConfig = PLAN_CONFIGS[plan];
   const now = Date.now();
   const thirtyDays = 30 * 24 * 60 * 60 * 1000;
 
-  // Get current user data for pro-rata calculation
-  const userDoc = await adminDB.collection("users").doc(uid).get();
-  const userData = userDoc.data();
-  const currentPlan = userData?.plan || "free";
-  const currentCredits = userData?.credits || 0;
-  const nextReset = userData?.nextReset || (now + thirtyDays);
+  // Fetch plan metadata from /plans collection
+  const planDoc = await adminDB.collection("plans").doc(planId).get();
+  
+  if (!planDoc.exists) {
+    throw new Error(`Plan ${planId} not found in /plans collection`);
+  }
+
+  const plan = planDoc.data()!;
+
+  // Get current workspace data for pro-rata calculation
+  const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+  const workspaceData = workspaceDoc.data();
+  const currentPlanId = workspaceData?.planId || "free";
+  const currentCredits = workspaceData?.credits || 0;
+  const nextReset = workspaceData?.nextReset || (now + thirtyDays);
 
   // Calculate credits based on pro-rata or full allocation
-  let creditsToAssign = planConfig.credits;
+  let creditsToAssign = plan.creditLimit;
   
-  if (useProRata && currentPlan !== plan && subscriptionId) {
+  if (useProRata && currentPlanId !== planId && subscriptionId) {
     // This is an upgrade/change - use pro-rata
-    const proRataCredits = calculateProRataCredits(currentPlan, plan, nextReset);
+    const proRataCredits = calculateProRataCredits(currentPlanId, planId, nextReset);
     
     // Add pro-rata credits to existing balance (generous approach)
     creditsToAssign = currentCredits + proRataCredits;
@@ -49,15 +56,21 @@ export async function assignPlanToUser(
   }
 
   const updateData: any = {
-    plan,
+    planId,
+    planRef: `/plans/${planId}`,
     credits: creditsToAssign,
-    maxCredits: planConfig.maxCredits,
-    monthlyCredits: planConfig.monthlyCredits,
-    scraperLimit: planConfig.scraperLimit,
+    
+    // Copy limits from plan
+    scraperLimit: plan.scraperLimit,
+    sequenceLimit: plan.sequenceLimit,
+    templateLimit: plan.templateLimit,
+    memberLimit: plan.memberLimit,
+    toneLimit: plan.toneLimit,
+
     scraperUsed: 0,
-    isUnlimited: plan === "agency",
-    nextReset: userData?.nextReset || (now + thirtyDays), // Keep existing reset date for upgrades
-    planUpdatedAt: now,
+    sequenceUsed: 0,
+    toneUsed: 0,
+    nextReset: workspaceData?.nextReset || (now + thirtyDays), // Keep existing reset date for upgrades
     updatedAt: now,
   };
 
@@ -67,55 +80,34 @@ export async function assignPlanToUser(
     updateData.activatedAt = now;
   }
 
-  await adminDB.collection("users").doc(uid).update(updateData);
+  await adminDB.collection("workspaces").doc(workspaceId).update(updateData);
+
+  // Sync plan type to owner's user doc
+  if (workspaceData?.ownerUid) {
+      await adminDB.collection("users").doc(workspaceData.ownerUid).update({
+          plan: planId,
+          updatedAt: now
+      });
+  }
 
   // Log analytics event
   await adminDB
-    .collection("users")
-    .doc(uid)
+    .collection("workspaces")
+    .doc(workspaceId)
     .collection("events")
     .add({
       type: "plan_assigned",
-      plan,
-      previousPlan: currentPlan,
+      planId,
+      previousPlan: currentPlanId,
       subscriptionId: subscriptionId || null,
       creditsAssigned: creditsToAssign,
       proRataUsed: useProRata,
       timestamp: now,
     });
 
-  console.log(`[Billing] Assigned ${plan} plan to user ${uid}`);
+  console.log(`[Billing] Assigned ${planId} plan to workspace ${workspaceId}`);
 }
 
-/**
- * Reset monthly credits if the reset date has passed
- * Called lazily when user performs actions
- */
-export async function resetMonthlyCreditsIfNeeded(uid: string): Promise<void> {
-  const userRef = adminDB.collection("users").doc(uid);
-  const userDoc = await userRef.get();
-  
-  if (!userDoc.exists) {
-    throw new Error("User not found");
-  }
-  
-  const userData = userDoc.data();
-  const now = Date.now();
-  
-  // Check if reset is needed
-  if (userData?.nextReset && userData.nextReset < now) {
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    
-    await userRef.update({
-      credits: userData.maxCredits || userData.monthlyCredits || 50,
-      scraperUsed: 0,
-      nextReset: now + thirtyDays,
-      updatedAt: now,
-    });
-    
-    console.log(`[Billing] Monthly credits reset for user ${uid}`);
-  }
-}
 
 /**
  * Create or get existing Razorpay customer for a user
@@ -173,32 +165,60 @@ export async function findUserByRazorpayId(
 }
 
 /**
- * Cancel user subscription (set to free plan)
+ * Cancel workspace subscription (set to free plan)
  */
-export async function cancelUserSubscription(uid: string): Promise<void> {
+export async function cancelWorkspaceSubscription(workspaceId: string): Promise<void> {
   const now = Date.now();
-  const freePlan = PLAN_CONFIGS.free;
+  
+  // Fetch free plan metadata
+  const freePlanDoc = await adminDB.collection("plans").doc("free").get();
+  
+  if (!freePlanDoc.exists) {
+    throw new Error("Free plan not found");
+  }
 
-  await adminDB.collection("users").doc(uid).update({
-    plan: "free",
-    credits: freePlan.credits,
-    maxCredits: freePlan.maxCredits,
-    monthlyCredits: freePlan.monthlyCredits,
+  const freePlan = freePlanDoc.data()!;
+
+  // Fetch workspace to get owner
+  const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+  const workspaceData = workspaceDoc.data();
+
+  await adminDB.collection("workspaces").doc(workspaceId).update({
+    planId: "free",
+    planRef: "/plans/free",
+    credits: freePlan.creditLimit,
+    
+    // Reset limits to free plan
     scraperLimit: freePlan.scraperLimit,
-    isUnlimited: false,
+    sequenceLimit: freePlan.sequenceLimit,
+    templateLimit: freePlan.templateLimit,
+    memberLimit: freePlan.memberLimit,
+    toneLimit: freePlan.toneLimit,
+
+    scraperUsed: 0,
+    sequenceUsed: 0,
+    toneUsed: 0,
     canceledAt: now,
     updatedAt: now,
   });
 
+  // Sync plan type to owner's user doc
+  if (workspaceData?.ownerUid) {
+      await adminDB.collection("users").doc(workspaceData.ownerUid).update({
+          plan: "free",
+          updatedAt: now
+      });
+  }
+
   // Log cancellation event
   await adminDB
-    .collection("users")
-    .doc(uid)
+    .collection("workspaces")
+    .doc(workspaceId)
     .collection("events")
     .add({
       type: "subscription_cancelled",
       timestamp: now,
     });
 
-  console.log(`[Billing] Cancelled subscription for user ${uid}`);
+  console.log(`[Billing] Cancelled subscription for workspace ${workspaceId}`);
 }

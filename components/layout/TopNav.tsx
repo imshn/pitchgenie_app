@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, User, Menu } from "lucide-react";
+import { Search, User, Menu, Inbox } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +85,16 @@ export function TopNav() {
           <span className="sr-only">Toggle theme</span>
         </Button>
 
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => router.push("/inbox")}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Inbox className="h-5 w-5" />
+          <span className="sr-only">Inbox</span>
+        </Button>
+
         <NotificationCenter />
 
         <DropdownMenu>
@@ -98,8 +108,8 @@ export function TopNav() {
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => router.push("/profile")}>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Support</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/settings")}>Settings</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/support")}>Support</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
               Logout

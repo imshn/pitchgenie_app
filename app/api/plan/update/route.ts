@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
-import { updateWorkspacePlan, PlanType } from "@/lib/credits";
+import { updateWorkspacePlan } from "@/lib/credits";
+import { PlanId } from "@/types/billing";
 
 export async function POST(req: Request) {
   try {
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
 
     // Parse request body
     const body = await req.json();
-    const { uid, plan } = body as { uid: string; plan: PlanType };
+    const { uid, plan } = body as { uid: string; plan: PlanId };
 
     if (!uid || !plan) {
       return NextResponse.json(
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     // Validate plan type
-    const validPlans: PlanType[] = ["free", "starter", "pro", "agency"];
+    const validPlans: PlanId[] = ["free", "starter", "pro", "agency"];
     if (!validPlans.includes(plan)) {
       return NextResponse.json(
         { error: "Invalid plan type" },

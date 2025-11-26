@@ -1,311 +1,141 @@
 "use client";
-
 import { useState, useEffect } from "react";
-import axios from "axios";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { User, Building2, Globe, PenTool, Loader2 } from 'lucide-react';
-import toast from "react-hot-toast";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/useAuth";
+import { User } from "lucide-react";
+import { SettingsSectionCard } from "@/components/settings/SettingsSectionCard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import toast from "react-hot-toast";
+import { updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-export default function SettingsPage() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const [profile, setProfile] = useState<any>({
-    fullName: "",
-    gender: "",
-    company: "",
-    position: "",
-    services: "",
-    about: "",
-    website: "",
-    linkedin: "",
-    personaTone: "professional",
-    valueProposition: "",
-  });
+export default function GeneralSettingsPage() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [timezone, setTimezone] = useState("UTC");
+  const [language, setLanguage] = useState("en");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const load = async () => {
-      if (!user) return;
-
-      try {
-        const token = await user.getIdToken();
-        const res = await axios.get("/api/profile/get", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (res.data.profile) setProfile(res.data.profile);
-      } catch (error) {
-        console.error("Failed to load profile", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
+    if (user) {
+      setDisplayName(user.displayName || "");
+    }
   }, [user]);
 
-  const saveProfile = async () => {
+  const handleSave = async () => {
+    if (!user) return;
+    setLoading(true);
     try {
-      setSaving(true);
-      const token = await user.getIdToken();
-
-      await axios.post("/api/profile/update", profile, {
-        headers: { Authorization: `Bearer ${token}` },
+      // Update profile in Firebase Auth
+      await updateProfile(user, {
+        displayName: displayName
       });
+
+      // Also update in Firestore users collection for consistency
+      await setDoc(doc(db, "users", user.uid), {
+        displayName: displayName
+      }, { merge: true });
 
       toast.success("Profile updated successfully!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Error updating profile.");
+
+      // Force reload to reflect changes if needed, or just let state update
+      // router.refresh(); 
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      toast.error("Failed to save settings");
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="animate-spin w-12 h-12 text-primary" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen space-y-4">
-        <p className="text-lg">Please sign in to view settings.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader
-        title="Settings"
-        // description="Customize your profile and AI preferences."
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">General Settings</h1>
+        <p className="text-muted-foreground mt-2">
+          Manage your personal account settings and preferences
+        </p>
+      </div>
+
+      {/* Profile Information */}
+      <SettingsSectionCard
+        title="Profile Information"
+        description="Update your personal details and display name"
+        icon={User}
       >
-        <Button onClick={saveProfile} disabled={saving}>
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save Changes
-        </Button>
-      </PageHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="displayName">Display Name</Label>
+            <Input
+              id="displayName"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Enter your display name"
+              className="mt-2"
+            />
+          </div>
 
-      <div className="flex-1 p-6 overflow-auto">
-        <div className="max-w-4xl mx-auto space-y-6">
-
-          
-          {/* SMTP Settings */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Globe className="w-5 h-5 text-primary" />
-                <CardTitle>SMTP Configuration</CardTitle>
-              </div>
-              <CardDescription>Configure your email provider for sending campaigns.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SMTPSettings />
-            </CardContent>
-          </Card>
-
+          <div>
+            <Label htmlFor="email">Email Address</Label>
+            <Input
+              id="email"
+              value={user?.email || ""}
+              disabled
+              className="mt-2 bg-muted"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Email cannot be changed
+            </p>
+          </div>
         </div>
-      </div>
-    </div>
-  );
-}
+      </SettingsSectionCard>
 
-function SMTPSettings() {
-  const [smtp, setSmtp] = useState({
-    host: "",
-    port: 587,
-    username: "",
-    password: "",
-    fromName: "",
-    fromEmail: "",
-    encryption: "tls",
-  });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [configured, setConfigured] = useState(false);
+      {/* Preferences */}
+      <SettingsSectionCard
+        title="Preferences"
+        description="Customize your experience"
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="timezone">Timezone</Label>
+            <Select value={timezone} onValueChange={setTimezone}>
+              <SelectTrigger id="timezone" className="mt-2">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="UTC">UTC</SelectItem>
+                <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                <SelectItem value="Europe/London">London</SelectItem>
+                <SelectItem value="Asia/Kolkata">India (IST)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-  useEffect(() => {
-    const fetchSmtp = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-        const token = await user.getIdToken();
-        const res = await axios.get("/api/smtp/get", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.data.smtp) {
-          setSmtp({ ...res.data.smtp, password: "" }); // Don't show password
-          setConfigured(true);
-        }
-      } catch (error) {
-        console.error("Failed to fetch SMTP", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) fetchSmtp();
-    });
-    return () => unsub();
-  }, []);
-
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      const user = auth.currentUser;
-      if (!user) return;
-      const token = await user.getIdToken();
-
-      await axios.post("/api/smtp/save", smtp, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      toast.success("SMTP settings saved successfully!");
-      setConfigured(true);
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error?.response?.data?.error || "Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleTest = async () => {
-    try {
-      setTesting(true);
-      const user = auth.currentUser;
-      if (!user) return;
-      const token = await user.getIdToken();
-
-      // If password is empty (masked), we can't test with current state unless we save first or backend handles it.
-      // But for security, usually we require re-entry or backend uses stored password if empty.
-      // The test endpoint currently decrypts stored password. So we should save first or just call test.
-      // Actually, the test endpoint uses stored settings. So we should save first if changed.
-
-      // Let's assume user saves first. Or we can warn.
-      // For now, let's just call test endpoint which uses stored config.
-
-      await axios.post("/api/smtp/test", {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      toast.success("Connection successful!");
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error?.response?.data?.error || "Connection failed");
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  if (loading) return <Loader2 className="h-6 w-6 animate-spin" />;
-
-  return (
-    <div className="space-y-4">
-      {configured && (
-        <div className="bg-green-500/10 text-green-600 dark:text-green-400 px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-green-500" />
-          SMTP Configured
+          <div>
+            <Label htmlFor="language">Language</Label>
+            <Select value={language} onValueChange={setLanguage}>
+              <SelectTrigger id="language" className="mt-2">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="es">Spanish</SelectItem>
+                <SelectItem value="fr">French</SelectItem>
+                <SelectItem value="de">German</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
+      </SettingsSectionCard>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Host</Label>
-          <Input
-            value={smtp.host}
-            onChange={(e) => setSmtp({ ...smtp, host: e.target.value })}
-            placeholder="smtp.gmail.com"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Port</Label>
-          <Input
-            type="number"
-            value={smtp.port}
-            onChange={(e) => setSmtp({ ...smtp, port: parseInt(e.target.value) })}
-            placeholder="587"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Username</Label>
-          <Input
-            value={smtp.username}
-            onChange={(e) => setSmtp({ ...smtp, username: e.target.value })}
-            placeholder="email@example.com"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Password</Label>
-          <Input
-            type="password"
-            value={smtp.password}
-            onChange={(e) => setSmtp({ ...smtp, password: e.target.value })}
-            placeholder={configured ? "••••••••" : "Enter password"}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>From Name</Label>
-          <Input
-            value={smtp.fromName}
-            onChange={(e) => setSmtp({ ...smtp, fromName: e.target.value })}
-            placeholder="John Doe"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>From Email</Label>
-          <Input
-            value={smtp.fromEmail}
-            onChange={(e) => setSmtp({ ...smtp, fromEmail: e.target.value })}
-            placeholder="john@example.com"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Encryption</Label>
-          <Select
-            value={smtp.encryption}
-            onValueChange={(val) => setSmtp({ ...smtp, encryption: val })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tls">TLS</SelectItem>
-              <SelectItem value="ssl">SSL</SelectItem>
-              <SelectItem value="none">None</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="flex gap-2 pt-2">
-        <Button onClick={handleSave} disabled={saving}>
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save Configuration
-        </Button>
-        <Button variant="outline" onClick={handleTest} disabled={testing || !configured}>
-          {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Test Connection
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={loading}>
+          {loading ? "Saving..." : "Save Changes"}
         </Button>
       </div>
     </div>

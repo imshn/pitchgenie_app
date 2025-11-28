@@ -19,14 +19,19 @@ function getCurrentDateId(): string {
 /**
  * Get SMTP daily usage for a specific date
  */
-async function getSmtpDailyUsage(userId: string, dateId: string): Promise<number> {
+/**
+ * Get SMTP daily usage for a specific date
+ */
+async function getSmtpDailyUsage(userId: string, dateId: string, workspaceId?: string | null): Promise<number> {
   try {
-    const dailyDoc = await adminDB
-      .collection("users")
-      .doc(userId)
-      .collection("smtpDaily")
-      .doc(dateId)
-      .get();
+    let dailyRef;
+    if (workspaceId) {
+       dailyRef = adminDB.collection("workspaces").doc(workspaceId).collection("smtpDaily").doc(dateId);
+    } else {
+       dailyRef = adminDB.collection("users").doc(userId).collection("smtpDaily").doc(dateId);
+    }
+
+    const dailyDoc = await dailyRef.get();
 
     if (!dailyDoc.exists) {
       return 0;
@@ -35,7 +40,7 @@ async function getSmtpDailyUsage(userId: string, dateId: string): Promise<number
     const data = dailyDoc.data();
     return data?.emailsSent || 0;
   } catch (error) {
-    console.error(`[getSmtpDailyUsage] Error fetching daily usage for ${userId}:`, error);
+    console.error(`[getSmtpDailyUsage] Error fetching daily usage for ${workspaceId || userId}:`, error);
     return 0;
   }
 }
@@ -54,33 +59,14 @@ export async function getUserPlan(
   const today = getCurrentDateId();
 
   try {
-    // Ensure valid billing cycle if not provided
-    let currentCycleId = cycleId;
-    if (!currentCycleId) {
-        currentCycleId = await ensureBillingCycle(userId);
-    }
-
-    // Fetch user document and profile in parallel
     // Fetch user document and profile in parallel
     const userRef = adminDB.collection("users").doc(userId);
-    // Fetch from legacy main doc as requested
     const profileRef = userRef.collection("profile").doc("main");
 
     const [userSnap, profileSnap] = await Promise.all([
       userRef.get(),
       profileRef.get()
     ]);
-
-    // ... (lines 72-174 are mostly unchanged, but I need to be careful with the context)
-    // Actually, I should only replace the profile fetching and parsing part.
-    // But since I need to change the profileRef definition (line 65) AND the parsing (line 176), 
-    // and they are far apart, I might need two chunks or a larger chunk.
-    // Let's do two chunks.
-    
-    // Chunk 1: Change profileRef
-    
-    // Chunk 2: Change profile parsing
-
 
     // If user doesn't exist, return default Free plan (new signup)
     if (!userSnap.exists) {
@@ -118,13 +104,18 @@ export async function getUserPlan(
         updatedAt: Timestamp.now()
       } as PlanDocument;
 
+      // Use today's cycle if not provided
+      const tempCycleId = cycleId || getCurrentDateId();
+
       return {
         userId,
+        billingUserId: userId,
         workspaceId: null,
         planType: "free",
+        personalPlanType: "free",
         planData: freePlanData,
         usage: {
-          monthId: currentCycleId,
+          monthId: tempCycleId,
           creditsUsed: 0,
           lightScrapesUsed: 0,
           deepScrapesUsed: 0,
@@ -148,13 +139,56 @@ export async function getUserPlan(
         canScrapeDeep: false
       };
     }
-
+    
     const userData = userSnap.data() as UserDocument;
-    const planType = userData.planType || "free";
+    let workspaceId = userData.currentWorkspaceId || userData.workspaceId || null;
+    let planType = userData.planType || "free";
+    let billingUserId = userId;
+    let currentCycleId = cycleId;
+    let usageRef;
+    let effectiveResetDate = userData.nextResetDate;
+
+    // If in a workspace, override plan and usage source
+    if (workspaceId) {
+        const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+        if (workspaceDoc.exists) {
+            const workspaceData = workspaceDoc.data();
+            // Workspace Plan overrides Personal Plan
+            planType = workspaceData?.planId || "free";
+            billingUserId = workspaceData?.ownerUid || userId;
+            
+            // ALWAYS use Owner's Billing Cycle for Workspace
+            // This ensures sync between Owner's personal usage (if migrated) and Workspace usage
+            if (!currentCycleId) {
+                currentCycleId = await ensureBillingCycle(billingUserId);
+            }
+            
+            // Fetch Owner's reset date for display
+            // We need to fetch the owner's doc to get the accurate nextResetDate (updated by ensureBillingCycle)
+            const ownerDoc = await adminDB.collection("users").doc(billingUserId).get();
+            effectiveResetDate = ownerDoc.data()?.nextResetDate;
+            
+            // Usage is tracked at Workspace level
+            usageRef = adminDB.collection("workspaces").doc(workspaceId).collection("usage").doc(currentCycleId);
+        } else {
+            workspaceId = null;
+        }
+    }
+
+    // If no workspace or cycle not set, use Personal Billing Cycle
+    if (!currentCycleId) {
+        currentCycleId = await ensureBillingCycle(userId);
+        // Refresh reset date from user doc (since ensureBillingCycle might have updated it)
+        const updatedUserDoc = await adminDB.collection("users").doc(userId).get();
+        effectiveResetDate = updatedUserDoc.data()?.nextResetDate;
+    }
+    
+    if (!usageRef) {
+         usageRef = adminDB.collection("users").doc(userId).collection("usage").doc(currentCycleId);
+    }
 
     // Fetch plan document and usage in parallel
     const planRef = adminDB.collection("plans").doc(planType);
-    const usageRef = userRef.collection("usage").doc(currentCycleId);
 
     const [planSnap, usageSnap] = await Promise.all([
       planRef.get(),
@@ -169,7 +203,7 @@ export async function getUserPlan(
     const planData = planSnap.data() as PlanDocument;
 
     // Get usage data or default to zeros
-    const usage: UsageDocument = usageSnap.exists
+    let usage: UsageDocument = usageSnap.exists
       ? (usageSnap.data() as UsageDocument)
       : {
           monthId: currentCycleId,
@@ -181,11 +215,45 @@ export async function getUserPlan(
           smtpEmailsSent: 0,
           aiGenerations: 0,
           imapSyncCount: 0,
-          resetDate: userData.nextResetDate || Timestamp.now(),
+          resetDate: effectiveResetDate || Timestamp.now(),
           updatedAt: Timestamp.now()
         };
 
-    // Get profile data if exists
+    // Lazy Migration: If workspace usage is empty/unmigrated, try to copy from Owner's personal usage
+    if (workspaceId && (!usageSnap.exists || !(usageSnap.data() as any).migrated)) {
+        try {
+            const ownerUsageRef = adminDB.collection("users").doc(billingUserId).collection("usage").doc(currentCycleId);
+            const ownerUsageSnap = await ownerUsageRef.get();
+            
+            if (ownerUsageSnap.exists) {
+                const ownerUsage = ownerUsageSnap.data() as UsageDocument;
+                // Only migrate if owner has meaningful usage
+                if (ownerUsage.creditsUsed > 0 || ownerUsage.smtpEmailsSent > 0 || ownerUsage.lightScrapesUsed > 0) {
+                    console.log(`[getUserPlan] Migrating usage from User ${billingUserId} to Workspace ${workspaceId}`);
+                    
+                    const migratedUsage = {
+                        ...ownerUsage,
+                        migrated: true,
+                        updatedAt: Timestamp.now()
+                    };
+                    
+                    // Write to workspace usage
+                    await usageRef.set(migratedUsage, { merge: true });
+                    
+                    // Update local usage variable to reflect migration immediately
+                    usage = migratedUsage as unknown as UsageDocument;
+                } else {
+                    // Mark as migrated to prevent future checks
+                    await usageRef.set({ migrated: true }, { merge: true });
+                }
+            }
+        } catch (migrationError) {
+            console.error("[getUserPlan] Migration failed:", migrationError);
+            // Continue with empty usage, don't block
+        }
+    }
+
+    // Get profile data if exists (of the Calling User)
     let profile: UserProfile | null = null;
     if (profileSnap.exists) {
         const data = profileSnap.data() || {};
@@ -202,15 +270,18 @@ export async function getUserPlan(
         profile = {
             ...data,
             displayName: data.fullName || data.name || data.displayName || "",
+            email: data.email || userData.email || "",
             company: companyObj,
             persona: data.persona || data.personaTone,
             timezone: data.timezone || "UTC",
-            language: data.language || "en"
+            language: data.language || "en",
+            createdAt: data.createdAt || Timestamp.now(),
+            updatedAt: data.updatedAt || Timestamp.now()
         } as UserProfile;
     }
 
-    // Get SMTP daily usage for today
-    const smtpDailyUsed = await getSmtpDailyUsage(userId, today);
+    // Get SMTP daily usage for today (Workspace or User level)
+    const smtpDailyUsed = await getSmtpDailyUsage(userId, today, workspaceId);
 
     // Calculate remaining limits
     const remaining = {
@@ -224,8 +295,10 @@ export async function getUserPlan(
 
     return {
       userId,
-      workspaceId: userData.workspaceId || null,
+      billingUserId,
+      workspaceId,
       planType,
+      personalPlanType: userData.planType || "free",
       planData,
       usage,
       profile,

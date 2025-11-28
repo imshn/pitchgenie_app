@@ -12,7 +12,7 @@ const razorpay = new Razorpay({
 export async function POST(req: Request) {
   try {
     const { uid, email } = await verifyUser();
-    const { planId, billingCycle } = await req.json();
+    const { planId, billingCycle, workspaceId } = await req.json();
 
     // Validate input
     if (!planId || !billingCycle) {
@@ -20,6 +20,21 @@ export async function POST(req: Request) {
         { error: "planId and billingCycle are required" },
         { status: 400 }
       );
+    }
+
+    // Verify workspace ownership if workspaceId provided
+    if (workspaceId) {
+        const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+        if (!workspaceDoc.exists) {
+            return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+        }
+        const workspaceData = workspaceDoc.data();
+        if (workspaceData?.ownerUid !== uid) {
+            return NextResponse.json(
+                { error: "Only the workspace owner can upgrade the plan" },
+                { status: 403 }
+            );
+        }
     }
 
     if (!["monthly", "yearly"].includes(billingCycle)) {
@@ -64,6 +79,7 @@ export async function POST(req: Request) {
       notes: {
         userId: uid,
         email: email as string,
+        workspaceId: workspaceId || "",
         planId,
         billingCycle,
         planName: plan.name,

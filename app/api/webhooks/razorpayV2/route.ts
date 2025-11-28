@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         { merge: true }
       );
 
-      console.log(`[Razorpay Webhook] Reset usage for month ${currentMonth}`);
+      // console.log(`[Razorpay Webhook] Reset usage for month ${currentMonth}`);
 
       // If workspace billing, update workspace planId
       if (workspaceId) {

@@ -153,16 +153,16 @@ export async function checkAndConsumeOperation(
       cycleId,
       creditCost,
       increments,
-      limits
+      limits,
+      planData.workspaceId
     );
 
     // Log Analytics Event (Fire and Forget)
     try {
-        const userDoc = await import("@/lib/firebase-admin").then(m => m.adminDB.collection("users").doc(userId).get());
-        const workspaceId = userDoc.data()?.currentWorkspaceId;
+        const workspaceId = planData.workspaceId;
         
         if (workspaceId) {
-            const { logAnalyticsEvent, AnalyticsEventType } = await import("./logAnalytics");
+            const { logAnalyticsEvent } = await import("./logAnalytics");
             
             let eventType: any = null;
             if (operation === "aiGeneration" || operation === "linkedinMessage") eventType = "email_generated";

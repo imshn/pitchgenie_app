@@ -92,8 +92,11 @@ export function SideNav() {
         ) : (
           <div className="rounded-lg bg-muted/50 p-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {planData?.planData.name || "Free"} Plan
+              <span
+                className="text-xs font-medium text-muted-foreground truncate max-w-[110px]"
+                title={planData?.workspaceId ? "Limits apply to this workspace" : "Your personal plan"}
+              >
+                {planData?.planData.name || "Free"} {planData?.workspaceId ? "(Workspace)" : "Plan"}
               </span>
               <span className="text-xs font-bold">
                 {planData?.remaining.credits ?? 0} / {planData?.planData.creditLimit ?? 50}

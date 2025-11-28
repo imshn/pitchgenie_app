@@ -36,22 +36,44 @@ export async function chargeCreditsAtomic(
     sequenceLimit?: number;
     templateLimit?: number;
     smtpDailyLimit?: number;
-  }
+  },
+  workspaceId?: string | null
 ): Promise<void> {
-  const usageRef = adminDB
-    .collection("users")
-    .doc(userId)
-    .collection("usage")
-    .doc(cycleId);
-
+  let usageRef: FirebaseFirestore.DocumentReference;
+  let smtpDailyRef: FirebaseFirestore.DocumentReference | null = null;
   const today = getCurrentDateId();
-  const smtpDailyRef = increments.smtpEmailsSent
-    ? adminDB
+
+  if (workspaceId) {
+    // Workspace-level usage
+    usageRef = adminDB
+      .collection("workspaces")
+      .doc(workspaceId)
+      .collection("usage")
+      .doc(cycleId);
+      
+    if (increments.smtpEmailsSent) {
+      smtpDailyRef = adminDB
+        .collection("workspaces")
+        .doc(workspaceId)
+        .collection("smtpDaily")
+        .doc(today);
+    }
+  } else {
+    // Personal-level usage
+    usageRef = adminDB
+      .collection("users")
+      .doc(userId)
+      .collection("usage")
+      .doc(cycleId);
+
+    if (increments.smtpEmailsSent) {
+      smtpDailyRef = adminDB
         .collection("users")
         .doc(userId)
         .collection("smtpDaily")
-        .doc(today)
-    : null;
+        .doc(today);
+    }
+  }
 
   try {
     await adminDB.runTransaction(async (transaction) => {

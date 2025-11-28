@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Loader2, Mail, Users, CreditCard, Repeat, Database, Send } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { useAuth } from "@/app/hooks/useAuth";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -76,8 +76,24 @@ export default function AnalyticsPage() {
     }
     const fetchData = async () => {
       try {
+        // 1. Get browser timezone as default
+        let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+        // 2. Try to fetch user profile for saved timezone
+        try {
+          const profileRes = await axios.get("/api/profile/get", {
+            headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+          });
+          if (profileRes.data?.profile?.timezone) {
+            timezone = profileRes.data.profile.timezone;
+          }
+        } catch (err) {
+          console.warn("Failed to fetch profile timezone, using browser default", err);
+        }
+
         const res = await axios.get("/api/analytics/summary", {
           headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+          params: { timezone },
         });
         const { summary, timeseries, recent } = res.data;
         setSummary(summary);
@@ -192,35 +208,39 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader>
+          <Card className="lg:col-span-2 flex flex-col h-[420px]">
+            <CardHeader className="pb-2">
               <CardTitle>Activity Overview</CardTitle>
               <CardDescription>
                 Performance trends for the last 30 days
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 px-2 pb-2 min-h-0">
               {timeseries.length === 0 ? (
-                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                <div className="flex items-center justify-center h-full text-muted-foreground">
                   No activity data available
                 </div>
               ) : (
-                <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
+                <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
                   <AreaChart
                     accessibilityLayer
                     data={timeseries}
                     margin={{
                       left: 12,
                       right: 12,
+                      top: 10,
+                      bottom: 5,
                     }}
                   >
                     <CartesianGrid vertical={false} />
+                    <YAxis hide padding={{ top: 30, bottom: 20 }} />
                     <XAxis
                       dataKey="date"
                       tickLine={false}
                       axisLine={false}
-                      tickMargin={8}
+                      tickMargin={4}
                       minTickGap={32}
+                      padding={{ left: 12, right: 24 }}
                       tickFormatter={(value) => {
                         const date = new Date(value);
                         return date.toLocaleDateString("en-US", {

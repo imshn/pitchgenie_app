@@ -48,6 +48,7 @@ export interface EffectivePlanClient {
     userId: string;
     workspaceId: string | null;
     planType: string;
+    personalPlanType: string;
     planData: PlanData;
     usage: UsageData;
     remaining: {

@@ -57,12 +57,22 @@ export async function GET(req: Request) {
     const events: any[] = [];
     eventsSnap.forEach((doc) => events.push({ id: doc.id, ...doc.data() }));
 
-    // Build 30‑day time series
+    // Get timezone from query params
+    const { searchParams } = new URL(req.url);
+    const timezone = searchParams.get('timezone') || 'UTC';
+
+    // Build 30‑day time series based on user's timezone
     const seriesMap: Record<string, any> = {};
+    
+    // Get "today" in user's timezone (YYYY-MM-DD)
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: timezone });
+    
     for (let i = 0; i < 30; i++) {
-      const day = new Date();
-      day.setDate(day.getDate() - i);
-      const key = day.toISOString().split('T')[0]; // YYYY‑MM‑DD
+      const d = new Date(todayStr); // Parsed as UTC midnight
+      d.setUTCDate(d.getUTCDate() - i);
+      const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
+      
       seriesMap[key] = {
         date: key,
         email_generated: 0,
@@ -72,9 +82,13 @@ export async function GET(req: Request) {
         credits_used: 0,
       };
     }
+
     events.forEach((e) => {
-      const dateKey = new Date(e.timestamp).toISOString().split('T')[0];
+      // Convert event timestamp to user's timezone date string
+      const dateKey = new Date(e.timestamp).toLocaleDateString('en-CA', { timeZone: timezone });
+      
       if (!seriesMap[dateKey]) return; // outside 30‑day window
+      
       if (e.cost) {
         seriesMap[dateKey].credits_used += e.cost;
       }

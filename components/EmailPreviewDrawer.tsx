@@ -107,6 +107,22 @@ export default function EmailPreviewDrawer({ open, onClose, previewData, workspa
         body: editedContent.body,
       };
 
+      if (!payload.to) {
+        showStatus("error", "Validation Error", "Recipient email (to) is missing");
+        setIsSending(false);
+        return;
+      }
+      if (!payload.subject) {
+        showStatus("error", "Validation Error", "Subject is required");
+        setIsSending(false);
+        return;
+      }
+      if (!payload.body) {
+        showStatus("error", "Validation Error", "Email body is required");
+        setIsSending(false);
+        return;
+      }
+
       const res = await axios.post("/api/sendEmail", payload, { headers: { Authorization: `Bearer ${token}` } });
       showStatus("success", "Sent", "Email queued/sent successfully");
       // Don't close immediately so user sees success modal

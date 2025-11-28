@@ -36,6 +36,8 @@ export interface UserDocument {
   displayName?: string;
   planType: "free" | "starter" | "pro" | "agency";
   workspaceId?: string | null;
+  currentWorkspaceId?: string;
+  nextResetDate?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -167,8 +169,10 @@ export enum OperationErrorCode {
 // Merged plan data (returned by getUserPlan/getWorkspacePlan)
 export interface MergedPlanData {
   userId: string;
+  billingUserId?: string;
   workspaceId?: string | null;
   planType: "free" | "starter" | "pro" | "agency";
+  personalPlanType: "free" | "starter" | "pro" | "agency";
   planData: PlanDocument;
   usage: UsageDocument;
   profile: UserProfile | null;

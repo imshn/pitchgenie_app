@@ -8,8 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import toast from "react-hot-toast";
-import { updateProfile } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export default function GeneralSettingsPage() {
@@ -20,32 +18,64 @@ export default function GeneralSettingsPage() {
   const [language, setLanguage] = useState("en");
 
   useEffect(() => {
-    if (user) {
-      setDisplayName(user.displayName || "");
-    }
+    const fetchProfile = async () => {
+      if (!user) return;
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch("/api/profile/get", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.profile) {
+            setDisplayName(data.profile.fullName || data.profile.displayName || user.displayName || "");
+            setTimezone(data.profile.timezone || "UTC");
+            setLanguage(data.profile.language || "en");
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
+    };
+
+    fetchProfile();
   }, [user]);
 
   const handleSave = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      // Update profile in Firebase Auth
-      await updateProfile(user, {
-        displayName: displayName
+      const token = await user.getIdToken();
+
+      // Call API to update profile
+      const response = await fetch("/api/user/updateProfile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          displayName,
+          timezone,
+          language
+        }),
       });
 
-      // Also update in Firestore users collection for consistency
-      await setDoc(doc(db, "users", user.uid), {
-        displayName: displayName
-      }, { merge: true });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update profile");
+      }
 
       toast.success("Profile updated successfully!");
 
-      // Force reload to reflect changes if needed, or just let state update
-      // router.refresh(); 
-    } catch (error) {
+      // Force token refresh to get new display name
+      await user.reload();
+
+      // Force reload to reflect changes
+      window.location.reload();
+    } catch (error: any) {
       console.error("Error saving settings:", error);
-      toast.error("Failed to save settings");
+      toast.error(error.message || "Failed to save settings");
     } finally {
       setLoading(false);
     }

@@ -41,24 +41,38 @@ export async function generateEmailWithGroq(
   context: GroqRequestContext,
   maxRetries: number = 2
 ): Promise<EmailGenerationResponse> {
-  const systemPrompt = `You are an expert B2B outreach writer. Use the user's profile data to personalize emails. 
-Prefer concise subject lines, short first emails, and 3 follow-ups. 
-Mention company facts when available. Use friendly, professional tone.
+  const systemPrompt = `You are a world-class B2B copywriter specializing in cold outreach.
+Your goal is to write emails that get replies by being hyper-personalized, concise, and value-driven.
+Avoid generic fluff like "I hope this email finds you well".
+Focus on the prospect's pain points and how the user's solution addresses them.
+Keep the tone professional yet conversational.
+
 IMPORTANT: Respond ONLY with valid JSON in this exact format:
 {
-  "subject": "...",
-  "body": "...",
-  "followUp": "..."
+  "subject": "Concise, intriguing subject line (under 6 words)",
+  "body": "The email body (keep it under 150 words)",
+  "followUp": "A short follow-up email sent 3 days later"
 }`;
 
-  const userPrompt = `Generate a personalized outreach email based on the following context:
+  const userPrompt = `Write a cold email to this lead:
 
-User Profile: ${JSON.stringify(context.userProfile, null, 2)}
-Lead: ${JSON.stringify(context.lead, null, 2)}
-${context.companySummary ? `Company Summary: ${JSON.stringify(context.companySummary, null, 2)}` : ""}
+User Profile (Sender):
+${JSON.stringify(context.userProfile, null, 2)}
+
+Lead (Recipient):
+${JSON.stringify(context.lead, null, 2)}
+
+${context.companySummary ? `Company Summary (Lead's Company):
+${JSON.stringify(context.companySummary, null, 2)}` : ""}
+
 Persona: ${context.persona || "Founder"}
 
-Generate a compelling outreach email with subject, body, and follow-up.`;
+Instructions:
+1. Subject Line: Make it sound like it's from a peer, not a marketer. Lowercase is often better.
+2. Opening: Reference something specific about the lead or their company (from the summary/data).
+3. Value Prop: Connect their likely challenges to the user's solution.
+4. Call to Action: Low friction (e.g., "Worth a chat?", "Open to a 5-min demo?").
+5. Follow-up: A gentle nudge adding a slightly different angle or value.`;
 
   let lastError: Error | null = null;
   let temperature = 0.7;

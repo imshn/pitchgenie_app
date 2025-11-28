@@ -26,22 +26,6 @@ export default function SignupPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const ensureUserDoc = async (user: any) => {
-    const ref = doc(db, "users", user.uid);
-    await setDoc(
-      ref,
-      {
-        fullName: fullName || user.email,
-        email: user.email,
-        onboardingCompleted: false,
-        onboardingStep: 1,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    );
-  };
-
   const signup = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -51,10 +35,26 @@ export default function SignupPage() {
       const searchParams = new URLSearchParams(window.location.search);
       const inviteWorkspaceId = searchParams.get("invite");
       const redirectPath = searchParams.get("redirect");
+      const requestedPlan = searchParams.get("plan");
 
       const res = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(res.user, { displayName: fullName });
-      await ensureUserDoc(res.user);
+
+      // Call Bootstrap API
+      const token = await res.user.getIdToken();
+      await fetch("/api/auth/bootstrap", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fullName,
+          email,
+          requestedPlan
+        })
+      });
+
       toast.success("Account created successfully");
 
       // Redirect based on invite parameter
@@ -63,7 +63,11 @@ export default function SignupPage() {
       } else if (inviteWorkspaceId) {
         router.push(`/invite/${inviteWorkspaceId}`);
       } else {
-        router.push("/onboarding/step1");
+        // Bootstrap handles plan assignment. If paid plan, it sets onboardingCompleted=true.
+        // ClientAuthWrapper will handle the redirect logic.
+        // But for better UX, we can check the plan here or just go to dashboard/onboarding
+        // Let's go to dashboard, and let AuthWrapper redirect to onboarding if needed.
+        router.push("/dashboard");
       }
     } catch (err: any) {
       console.error(err);

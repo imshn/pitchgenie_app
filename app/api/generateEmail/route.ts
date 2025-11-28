@@ -20,11 +20,31 @@ export async function POST(req: Request) {
     // Get user plan data for profile
     const planData = await getUserPlan(uid);
     const userProfile = planData.profile;
+    const workspaceId = null; // Removed incorrect access
+
+    // Actually getUserPlan returns { planData, profile, usage }. 
+    // planData usually contains limits. 
+    // We need to fetch the user's currentWorkspaceId.
+    // Let's fetch it directly to be safe, or check if getUserPlan returns it.
+    // Looking at getUserPlan.ts (I can't see it but I can assume).
+    // Let's just fetch the user doc to be sure.
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const currentWorkspaceId = userDoc.data()?.currentWorkspaceId;
+
+    if (!currentWorkspaceId) {
+        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
 
     // Fetch lead data if leadId provided
     let leadData = lead;
     if (leadId && !lead) {
-      const leadDoc = await adminDB.collection("leads").doc(leadId).get();
+      const leadDoc = await adminDB
+        .collection("workspaces")
+        .doc(currentWorkspaceId)
+        .collection("leads")
+        .doc(leadId)
+        .get();
+        
       if (!leadDoc.exists) {
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
       }
@@ -45,9 +65,16 @@ export async function POST(req: Request) {
     // Save generated email to lead document if leadId provided
     if (leadId) {
       await adminDB
+        .collection("workspaces")
+        .doc(currentWorkspaceId)
         .collection("leads")
         .doc(leadId)
         .update({
+          // Save as current draft
+          subject: result.subject,
+          body: result.body,
+          followUp: result.followUp,
+          // Keep history in generatedEmail
           generatedEmail: {
             subject: result.subject,
             body: result.body,
@@ -71,13 +98,25 @@ export async function POST(req: Request) {
     // Check for specific error codes
     if (error.message?.includes("INSUFFICIENT_CREDITS")) {
       return NextResponse.json(
-        { error: "Insufficient credits" },
+        {
+          success: false,
+          error: {
+            code: "INSUFFICIENT_CREDITS",
+            message: "Insufficient monthly credits. Please upgrade your plan."
+          }
+        },
         { status: 402 }
       );
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to generate email" },
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Failed to generate email"
+        }
+      },
       { status: 500 }
     );
   }

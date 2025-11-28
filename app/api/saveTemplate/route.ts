@@ -61,10 +61,30 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (e) {
-    console.error("SAVE TEMPLATE ERROR:", e);
+  } catch (error: any) {
+    console.error("SAVE TEMPLATE ERROR:", error);
+
+    if (error.message?.includes("TEMPLATE_LIMIT")) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "LIMIT_EXCEEDED",
+            message: "Template limit reached. Upgrade plan."
+          }
+        },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Server Error saving template" },
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Server Error saving template"
+        }
+      },
       { status: 500 }
     );
   }

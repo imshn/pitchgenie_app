@@ -183,7 +183,21 @@ export function BillingContent() {
               )}
             </div>
             <p className="text-sm text-muted-foreground mt-2">
-              Renews on {new Date(usage.resetDate).toLocaleDateString()}
+              Renews on {(() => {
+                try {
+                  const dateValue: any = usage.resetDate;
+                  if (!dateValue) return "N/A";
+                  if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+                    return dateValue.toDate().toLocaleDateString();
+                  } else if (dateValue._seconds !== undefined) {
+                    return new Date(dateValue._seconds * 1000).toLocaleDateString();
+                  } else {
+                    return new Date(dateValue).toLocaleDateString();
+                  }
+                } catch (e) {
+                  return "Invalid Date";
+                }
+              })()}
             </p>
           </div>
           <CreditCard className="h-5 w-5 text-muted-foreground self-end mt-4" />

@@ -139,14 +139,14 @@ export type CreditOperation =
 
 // Credit consumption mapping
 export const CREDIT_COSTS: Record<CreditOperation, number> = {
-  aiGeneration: 1,
+  aiGeneration: 1, // AI Email
   emailSequence: 3,
   linkedinMessage: 1,
   lightScrape: 5,
   deepScrape: 15,
   smtpSend: 1,
   imapSync: 2,
-  deliverabilityCheck: 2,
+  deliverabilityCheck: 2, // Not specified in strict list, keeping 2
   templateSave: 0,
   export: 0,
 };

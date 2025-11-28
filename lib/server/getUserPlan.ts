@@ -2,15 +2,8 @@ import { adminDB } from "@/lib/firebase-admin";
 import { PlanDocument, UserDocument, UserProfile, UsageDocument, MergedPlanData } from "@/lib/types/plans";
 import { Timestamp } from "firebase-admin/firestore";
 
-/**
- * Get current month in YYYY-MM format (UTC)
- */
-function getCurrentMonthId(): string {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
+
+import { ensureBillingCycle } from "./billingCycle";
 
 /**
  * Get current date in YYYY-MM-DD format (UTC)
@@ -51,25 +44,43 @@ async function getSmtpDailyUsage(userId: string, dateId: string): Promise<number
  * Get merged user plan data including plan metadata, usage, profile, and remaining limits
  * 
  * @param userId - Firebase user ID
- * @param monthId - Optional month ID (defaults to current month YYYY-MM)
+ * @param cycleId - Optional cycle ID (YYYY-MM-DD). If not provided, fetches from user doc.
  * @returns Merged plan data with calculated remaining limits
  */
 export async function getUserPlan(
   userId: string,
-  monthId?: string
+  cycleId?: string
 ): Promise<MergedPlanData> {
-  const month = monthId || getCurrentMonthId();
   const today = getCurrentDateId();
 
   try {
+    // Ensure valid billing cycle if not provided
+    let currentCycleId = cycleId;
+    if (!currentCycleId) {
+        currentCycleId = await ensureBillingCycle(userId);
+    }
+
+    // Fetch user document and profile in parallel
     // Fetch user document and profile in parallel
     const userRef = adminDB.collection("users").doc(userId);
-    const profileRef = userRef.collection("profile").doc("profile");
+    // Fetch from legacy main doc as requested
+    const profileRef = userRef.collection("profile").doc("main");
 
     const [userSnap, profileSnap] = await Promise.all([
       userRef.get(),
       profileRef.get()
     ]);
+
+    // ... (lines 72-174 are mostly unchanged, but I need to be careful with the context)
+    // Actually, I should only replace the profile fetching and parsing part.
+    // But since I need to change the profileRef definition (line 65) AND the parsing (line 176), 
+    // and they are far apart, I might need two chunks or a larger chunk.
+    // Let's do two chunks.
+    
+    // Chunk 1: Change profileRef
+    
+    // Chunk 2: Change profile parsing
+
 
     // If user doesn't exist, return default Free plan (new signup)
     if (!userSnap.exists) {
@@ -80,7 +91,7 @@ export async function getUserPlan(
         name: "Free",
         priceMonthly: 0,
         priceYearly: 0,
-        memberLimit: 1,
+        memberLimit: 2,
         creditLimit: 50,
         scraperLightLimit: 5,
         scraperDeepLimit: 0,
@@ -90,8 +101,17 @@ export async function getUserPlan(
         aiToneModes: 2,
         smtpDailyLimit: 20,
         imapSyncIntervalSeconds: null,
-        integrations: { notion: false, slack: false, sheetsSync: false, zapier: false },
-        features: [],
+        integrations: { notion: true, slack: false, sheetsSync: true, zapier: false },
+        features: [
+          "50 monthly credits",
+          "20 emails per day",
+          "5 light scrapes",
+          "1 sequence per month",
+          "2 templates",
+          "Email & LinkedIn generation",
+          "Manual email sending",
+          "Google Sheets & Notion integration"
+        ],
         tagColor: "#9CA3AF",
         badge: null,
         createdAt: Timestamp.now(),
@@ -104,7 +124,7 @@ export async function getUserPlan(
         planType: "free",
         planData: freePlanData,
         usage: {
-          monthId: month,
+          monthId: currentCycleId,
           creditsUsed: 0,
           lightScrapesUsed: 0,
           deepScrapesUsed: 0,
@@ -134,7 +154,7 @@ export async function getUserPlan(
 
     // Fetch plan document and usage in parallel
     const planRef = adminDB.collection("plans").doc(planType);
-    const usageRef = userRef.collection("usage").doc(month);
+    const usageRef = userRef.collection("usage").doc(currentCycleId);
 
     const [planSnap, usageSnap] = await Promise.all([
       planRef.get(),
@@ -152,7 +172,7 @@ export async function getUserPlan(
     const usage: UsageDocument = usageSnap.exists
       ? (usageSnap.data() as UsageDocument)
       : {
-          monthId: month,
+          monthId: currentCycleId,
           creditsUsed: 0,
           lightScrapesUsed: 0,
           deepScrapesUsed: 0,
@@ -161,14 +181,33 @@ export async function getUserPlan(
           smtpEmailsSent: 0,
           aiGenerations: 0,
           imapSyncCount: 0,
-          resetDate: Timestamp.now(),
+          resetDate: userData.nextResetDate || Timestamp.now(),
           updatedAt: Timestamp.now()
         };
 
     // Get profile data if exists
-    const profile: UserProfile | null = profileSnap.exists
-      ? (profileSnap.data() as UserProfile)
-      : null;
+    let profile: UserProfile | null = null;
+    if (profileSnap.exists) {
+        const data = profileSnap.data() || {};
+        
+        // Construct company object from flat fields if needed
+        const companyObj = data.company && typeof data.company === 'object' ? data.company : {
+            name: data.company || data.companyName,
+            website: data.website || data.companyWebsite,
+            about: data.companyDescription,
+            location: data.companyLocation,
+            services: data.services || data.servicesOffered
+        };
+
+        profile = {
+            ...data,
+            displayName: data.fullName || data.name || data.displayName || "",
+            company: companyObj,
+            persona: data.persona || data.personaTone,
+            timezone: data.timezone || "UTC",
+            language: data.language || "en"
+        } as UserProfile;
+    }
 
     // Get SMTP daily usage for today
     const smtpDailyUsed = await getSmtpDailyUsage(userId, today);

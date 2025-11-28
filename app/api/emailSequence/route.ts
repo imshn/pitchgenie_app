@@ -21,10 +21,24 @@ export async function POST(req: Request) {
     const planData =await getUserPlan(uid);
     const userProfile = planData.profile;
 
+    // Fetch workspace ID
+    const userDoc = await adminDB.collection("users").doc(uid).get();
+    const currentWorkspaceId = userDoc.data()?.currentWorkspaceId;
+
+    if (!currentWorkspaceId) {
+        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
+
     // Fetch lead data if leadId provided
     let leadData = lead;
     if (leadId && !lead) {
-      const leadDoc = await adminDB.collection("leads").doc(leadId).get();
+      const leadDoc = await adminDB
+        .collection("workspaces")
+        .doc(currentWorkspaceId)
+        .collection("leads")
+        .doc(leadId)
+        .get();
+
       if (!leadDoc.exists) {
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
       }
@@ -45,6 +59,8 @@ export async function POST(req: Request) {
     // Save sequence to lead document if leadId provided
     if (leadId) {
       await adminDB
+        .collection("workspaces")
+        .doc(currentWorkspaceId)
         .collection("leads")
         .doc(leadId)
         .update({
@@ -67,20 +83,38 @@ export async function POST(req: Request) {
     // Check for specific error codes
     if (error.message?.includes("INSUFFICIENT_CREDITS")) {
       return NextResponse.json(
-        { error: "Insufficient credits" },
+        {
+          success: false,
+          error: {
+            code: "INSUFFICIENT_CREDITS",
+            message: "Insufficient monthly credits. Please upgrade your plan."
+          }
+        },
         { status: 402 }
       );
     }
 
     if (error.message?.includes("SEQUENCE_LIMIT")) {
       return NextResponse.json(
-        { error: "Sequence limit reached for your plan" },
+        {
+          success: false,
+          error: {
+            code: "LIMIT_EXCEEDED",
+            message: "Monthly sequence limit reached. Upgrade plan."
+          }
+        },
         { status: 403 }
       );
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to generate sequence" },
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Failed to generate sequence"
+        }
+      },
       { status: 500 }
     );
   }

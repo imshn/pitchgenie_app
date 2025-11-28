@@ -2,15 +2,7 @@ import { getUserPlan } from "./getUserPlan";
 import { chargeCreditsAtomic } from "./chargeCreditsAtomic";
 import { CreditOperation, CREDIT_COSTS, OperationErrorCode, OperationDetails } from "@/lib/types/plans";
 
-/**
- * Get current month in YYYY-MM format (UTC)
- */
-function getCurrentMonthId(): string {
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
+import { ensureBillingCycle } from "./billingCycle";
 
 /**
  * Check if user can perform operation and consume credits atomically
@@ -27,12 +19,13 @@ export async function checkAndConsumeOperation(
   details?: OperationDetails["metadata"]
 ): Promise<{ success: true; message: string }> {
   
-  const monthId = getCurrentMonthId();
+  // Ensure valid billing cycle and get current cycle ID
+  const cycleId = await ensureBillingCycle(userId);
   const creditCost = CREDIT_COSTS[operation];
 
   try {
     // Fetch current plan and usage
-    const planData = await getUserPlan(userId, monthId);
+    const planData = await getUserPlan(userId, cycleId);
 
     // Check credit balance
     if (planData.remaining.credits < creditCost) {
@@ -131,14 +124,67 @@ export async function checkAndConsumeOperation(
         break;
     }
 
+    // Prepare limits for atomic verification
+    const limits: any = {
+      creditLimit: planData.planData.creditLimit
+    };
+
+    switch (operation) {
+      case "lightScrape":
+        limits.lightScrapeLimit = planData.planData.scraperLightLimit;
+        break;
+      case "deepScrape":
+        limits.deepScrapeLimit = planData.planData.scraperDeepLimit;
+        break;
+      case "emailSequence":
+        limits.sequenceLimit = planData.planData.sequenceLimit;
+        break;
+      case "templateSave":
+        limits.templateLimit = planData.planData.templateLimit;
+        break;
+      case "smtpSend":
+        limits.smtpDailyLimit = planData.planData.smtpDailyLimit;
+        break;
+    }
+
     // Atomically charge credits and update usage
     await chargeCreditsAtomic(
       userId,
-      monthId,
+      cycleId,
       creditCost,
       increments,
-      planData.planData.creditLimit
+      limits
     );
+
+    // Log Analytics Event (Fire and Forget)
+    try {
+        const userDoc = await import("@/lib/firebase-admin").then(m => m.adminDB.collection("users").doc(userId).get());
+        const workspaceId = userDoc.data()?.currentWorkspaceId;
+        
+        if (workspaceId) {
+            const { logAnalyticsEvent, AnalyticsEventType } = await import("./logAnalytics");
+            
+            let eventType: any = null;
+            if (operation === "aiGeneration" || operation === "linkedinMessage") eventType = "email_generated";
+            if (operation === "emailSequence") eventType = "sequence_generated";
+            if (operation === "lightScrape" || operation === "deepScrape") eventType = "scraper_run";
+            if (operation === "smtpSend") eventType = "email_sent";
+            
+            if (eventType) {
+                logAnalyticsEvent(workspaceId, eventType, creditCost, details || {});
+            }
+            
+            // Always log credit usage
+            if (creditCost > 0) {
+                 // We could log a separate 'credits_used' event or just rely on the cost field in the main event.
+                 // The dashboard sums up 'cost' from all events, so we don't strictly need a separate event unless it's a pure credit charge without a type.
+                 // But let's follow the pattern if needed.
+            }
+        }
+    } catch (logError) {
+        console.error("[checkAndConsumeOperation] Failed to log analytics:", logError);
+        // Don't fail the operation if logging fails
+    }
 
     console.log(
       `[checkAndConsumeOperation] ${operation} successful for user ${userId}. Cost: ${creditCost} credits`

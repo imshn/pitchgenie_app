@@ -20,6 +20,47 @@ export async function GET(req: Request) {
 
         for (const doc of workspacesSnapshot.docs) {
             const workspaceId = doc.id;
+            const workspaceData = doc.data();
+            const userId = workspaceData.userId || workspaceData.ownerId; // specific to your schema
+
+            if (!userId) continue;
+
+            // 1a. Check Plan & Interval
+            const { getUserPlan } = await import("@/lib/server/getUserPlan");
+            const planData = await getUserPlan(userId);
+            
+            if (planData.planType === "free") {
+                continue; // Inbox sync disabled for free plan
+            }
+
+            // Enforce sync intervals
+            let intervalSeconds = 600; // Default Starter: 10 mins
+            if (planData.planType === "pro") intervalSeconds = 300; // Pro: 5 mins
+            if (planData.planType === "agency") intervalSeconds = 60; // Agency: 1 min
+
+            // Override if plan data has specific setting, but respect minimums
+            if (planData.planData.imapSyncIntervalSeconds) {
+                intervalSeconds = Math.max(intervalSeconds, planData.planData.imapSyncIntervalSeconds);
+            }
+
+            const lastSynced = workspaceData.inboxLastSynced?.toDate() || new Date(0);
+            const now = new Date();
+            const secondsSinceSync = (now.getTime() - lastSynced.getTime()) / 1000;
+
+            if (secondsSinceSync < intervalSeconds) {
+                continue; // Too soon
+            }
+
+            // 1b. Charge Credits
+            const { checkAndConsumeOperation } = await import("@/lib/server/checkAndConsumeOperation");
+            try {
+                await checkAndConsumeOperation(userId, "imapSync");
+            } catch (e: any) {
+                console.log(`[InboxSync] Skipping workspace ${workspaceId}: ${e.message}`);
+                results.push({ workspaceId, error: e.message });
+                continue;
+            }
+
             const settingsDoc = await adminDB
                 .collection("workspaces")
                 .doc(workspaceId)

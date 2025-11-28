@@ -73,34 +73,39 @@ export async function POST(req: Request) {
         return NextResponse.json({ received: true, status: "already_processed" });
       }
 
-      // Get current month for usage reset
+      // Billing Cycle Logic
       const now = new Date();
-      const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const billingStartDate = Timestamp.fromDate(now);
+      const nextResetDate = Timestamp.fromDate(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000));
+      const currentCycleId = now.toISOString().split('T')[0];
 
-      // Update user planType
+      // Update user planType and Billing Cycle
       const userRef = adminDB.collection("users").doc(userId);
       await userRef.update({
         planType: planId,
+        onboardingCompleted: true, // Prevent onboarding from showing after payment
+        billingStartDate,
+        nextResetDate,
+        currentCycleId,
         updatedAt: FieldValue.serverTimestamp()
       });
 
-      console.log(`[Razorpay Webhook] Updated user planType to ${planId}`);
+      console.log(`[Razorpay Webhook] Updated user planType to ${planId} and cycle to ${currentCycleId}`);
 
-      // Reset usage for current month
-      const usageRef = userRef.collection("usage").doc(currentMonth);
+      // Reset usage for new cycle
+      const usageRef = userRef.collection("usage").doc(currentCycleId);
       await usageRef.set(
         {
-          monthId: currentMonth,
+          monthId: currentCycleId,
           creditsUsed: 0,
           lightScrapesUsed: 0,
-          deepScrapesUsed: 0, sequencesUsed: 0,
+          deepScrapesUsed: 0,
+          sequencesUsed: 0,
           templatesUsed: 0,
           smtpEmailsSent: 0,
           aiGenerations: 0,
           imapSyncCount: 0,
-          resetDate: Timestamp.fromDate(
-            new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-          ),
+          resetDate: nextResetDate,
           updatedAt: FieldValue.serverTimestamp()
         },
         { merge: true }
@@ -117,10 +122,10 @@ export async function POST(req: Request) {
         });
 
         // Reset workspace usage
-        const workspaceUsageRef = workspaceRef.collection("usage").doc(currentMonth);
+        const workspaceUsageRef = workspaceRef.collection("usage").doc(currentCycleId);
         await workspaceUsageRef.set(
           {
-            monthId: currentMonth,
+            monthId: currentCycleId,
             creditsUsed: 0,
             lightScrapesUsed: 0,
             deepScrapesUsed: 0,
@@ -129,9 +134,7 @@ export async function POST(req: Request) {
             smtpEmailsSent: 0,
             aiGenerations: 0,
             imapSyncCount: 0,
-            resetDate: Timestamp.fromDate(
-              new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
-            ),
+            resetDate: nextResetDate,
             updatedAt: FieldValue.serverTimestamp()
           },
           { merge: true }

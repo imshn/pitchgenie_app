@@ -121,27 +121,51 @@ export async function POST(req: Request) {
     // Check for specific error codes
     if (error.message?.includes("INSUFFICIENT_CREDITS")) {
       return NextResponse.json(
-        { error: "Insufficient credits" },
+        {
+          success: false,
+          error: {
+            code: "INSUFFICIENT_CREDITS",
+            message: "Insufficient monthly credits. Please upgrade your plan."
+          }
+        },
         { status: 402 }
       );
     }
 
     if (error.message?.includes("SCRAPER_LIMIT_REACHED")) {
       return NextResponse.json(
-        { error: "Scraper limit reached for your plan" },
+        {
+          success: false,
+          error: {
+            code: "LIMIT_EXCEEDED",
+            message: "Scraping limit reached. Upgrade plan."
+          }
+        },
         { status: 403 }
       );
     }
 
     if (error.message?.includes("DEEP_SCRAPER_NOT_ALLOWED")) {
       return NextResponse.json(
-        { error: "Deep scraper not available on your plan" },
+        {
+          success: false,
+          error: {
+            code: "FORBIDDEN_FEATURE",
+            message: "Deep scraping is not available on your plan."
+          }
+        },
         { status: 403 }
       );
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to scrape company" },
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Failed to scrape company"
+        }
+      },
       { status: 500 }
     );
   }

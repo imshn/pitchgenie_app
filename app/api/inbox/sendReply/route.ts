@@ -11,6 +11,16 @@ export async function POST(req: Request) {
 
         if (!workspaceId) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
+        // Plan Check
+        const { getUserPlan } = await import("@/lib/server/getUserPlan");
+        const planData = await getUserPlan(uid);
+        if (planData.planType === "free") {
+            return NextResponse.json(
+                { error: "Inbox access requires Starter plan or higher" },
+                { status: 403 }
+            );
+        }
+
         // 1. Load SMTP Settings
         const settingsDoc = await adminDB
             .collection("workspaces")

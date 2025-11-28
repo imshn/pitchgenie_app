@@ -69,14 +69,19 @@ export async function POST(req: Request) {
 
     // Update lead if leadId provided
     if (leadId) {
-      await adminDB
-        .collection("leads")
-        .doc(leadId)
-        .update({
-          lastEmailSent: new Date().toISOString(),
-          emailCount: FieldValue.increment(1),
-          updatedAt: new Date().toISOString(),
-        });
+      const workspaceId = userData.currentWorkspaceId;
+      if (workspaceId) {
+        await adminDB
+          .collection("workspaces")
+          .doc(workspaceId)
+          .collection("leads")
+          .doc(leadId)
+          .update({
+            lastEmailSent: new Date().toISOString(),
+            emailCount: FieldValue.increment(1),
+            updatedAt: new Date().toISOString(),
+          });
+      }
     }
 
     console.log(`[POST /api/sendEmail] Email sent to ${to} by user ${uid}`);
@@ -91,14 +96,26 @@ export async function POST(req: Request) {
     // Check for specific error codes
     if (error.message?.includes("INSUFFICIENT_CREDITS")) {
       return NextResponse.json(
-        { error: "Insufficient credits" },
+        {
+          success: false,
+          error: {
+            code: "INSUFFICIENT_CREDITS",
+            message: "Insufficient monthly credits. Please upgrade your plan."
+          }
+        },
         { status: 402 }
       );
     }
 
     if (error.message?.includes("SMTP_DAILY_LIMIT")) {
       return NextResponse.json(
-        { error: "Daily SMTP limit reached for your plan" },
+        {
+          success: false,
+          error: {
+            code: "SMTP_LIMIT",
+            message: "Daily SMTP limit reached. Try again tomorrow or upgrade plan."
+          }
+        },
         { status: 403 }
       );
     }
@@ -106,13 +123,25 @@ export async function POST(req: Request) {
     // SMTP errors
     if (error.code === "EAUTH" || error.responseCode === 535) {
       return NextResponse.json(
-        { error: "SMTP authentication failed. Please check your credentials." },
+        {
+          success: false,
+          error: {
+            code: "SMTP_AUTH_ERROR",
+            message: "SMTP authentication failed. Please check your credentials."
+          }
+        },
         { status: 401 }
       );
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to send email" },
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error.message || "Failed to send email"
+        }
+      },
       { status: 500 }
     );
   }

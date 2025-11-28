@@ -16,6 +16,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Plan Check
+    const { getUserPlan } = await import("@/lib/server/getUserPlan");
+    const planData = await getUserPlan(uid);
+    if (planData.planType === "free") {
+      return NextResponse.json(
+        { error: "Inbox access requires Starter plan or higher" },
+        { status: 403 }
+      );
+    }
+
     // Validate port
     const portNumber = parseInt(port);
     if (isNaN(portNumber) || portNumber < 1 || portNumber > 65535) {

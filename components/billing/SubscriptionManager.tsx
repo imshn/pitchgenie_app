@@ -120,13 +120,29 @@ export function SubscriptionManager() {
         return null;
     }
 
-    const nextBillingDate = nextReset
-        ? new Date(nextReset).toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-        })
-        : "N/A";
+    const nextBillingDate = (() => {
+        if (!nextReset) return "N/A";
+        try {
+            const dateValue: any = nextReset;
+            let dateObj: Date;
+
+            if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+                dateObj = dateValue.toDate();
+            } else if (dateValue._seconds !== undefined) {
+                dateObj = new Date(dateValue._seconds * 1000);
+            } else {
+                dateObj = new Date(dateValue);
+            }
+
+            return dateObj.toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+            });
+        } catch (e) {
+            return "Invalid Date";
+        }
+    })();
 
     return (
         <Card>

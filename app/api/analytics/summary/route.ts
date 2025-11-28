@@ -36,10 +36,15 @@ export async function GET(req: Request) {
       .get();
     const summaryData = summarySnap.exists ? summarySnap.data() : {};
     
-    // Merge with real-time lead count
+    // Fetch real-time plan usage to match sidebar
+    const { getUserPlan } = await import("@/lib/server/getUserPlan");
+    const plan = await getUserPlan(uid);
+
+    // Merge with real-time lead count and credit usage
     const summary = {
       ...summaryData,
       leads_total: totalLeads, // Use leads_total to match frontend expectations
+      credits_used_total: plan.usage.creditsUsed, // Sync with billing cycle usage
     };
 
     // Fetch last 30 days of events

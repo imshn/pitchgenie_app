@@ -100,6 +100,9 @@ export default function WorkspaceSettingsPage() {
             const dateValue: any = usage.resetDate;
             if (dateValue.toDate && typeof dateValue.toDate === 'function') {
                 resetDate = dateValue.toDate().toLocaleDateString();
+            } else if (dateValue._seconds !== undefined) {
+                // Handle serialized Firestore Timestamp
+                resetDate = new Date(dateValue._seconds * 1000).toLocaleDateString();
             } else if (typeof dateValue === 'number') {
                 resetDate = new Date(dateValue).toLocaleDateString();
             } else {
@@ -173,6 +176,30 @@ export default function WorkspaceSettingsPage() {
                             <p className="text-sm text-muted-foreground">Scraper Access</p>
                             <p className="text-lg font-semibold">
                                 {planInfo.scraperLightLimit} light, {planInfo.scraperDeepLimit} deep
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Sequences</p>
+                            <p className="text-lg font-semibold">
+                                {planInfo.sequenceLimit} / month
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Templates</p>
+                            <p className="text-lg font-semibold">
+                                {planInfo.templateLimit} total
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Daily Emails</p>
+                            <p className="text-lg font-semibold">
+                                {planInfo.smtpDailyLimit} / day
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">IMAP Sync</p>
+                            <p className="text-lg font-semibold">
+                                {planInfo.imapSyncIntervalSeconds ? `${planInfo.imapSyncIntervalSeconds / 60} min` : "Disabled"}
                             </p>
                         </div>
                     </div>

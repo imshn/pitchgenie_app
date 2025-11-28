@@ -18,7 +18,7 @@ import { usePlanData } from "@/hooks/usePlanData";
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Leads", href: "/leads", icon: Users },
-  // { name: "Inbox", href: "/inbox", icon: Inbox },
+  { name: "Inbox", href: "/inbox", icon: Inbox },
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Team", href: "/team", icon: UserPlus },
@@ -56,7 +56,10 @@ export function SideNav() {
           <div className="mb-4 px-2 text-xs font-semibold uppercase text-muted-foreground tracking-wider">
             Main Menu
           </div>
-          {navItems.map((item) => {
+          {navItems.filter(item => {
+            if (item.name === "Inbox" && currentPlan === "free") return false;
+            return true;
+          }).map((item) => {
             const isActive = pathname === item.href;
 
             // Add data-tour attributes for tour targets

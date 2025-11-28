@@ -12,9 +12,28 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createDiff } from "@/lib/textDiff";
 
-export default function EmailPreviewDrawer({ open, onClose, previewData }: { open: boolean; onClose: () => void; previewData: any; }) {
+import { StatusModal } from "@/components/ui/StatusModal";
+
+export default function EmailPreviewDrawer({ open, onClose, previewData, workspaceId }: { open: boolean; onClose: () => void; previewData: any; workspaceId: string | null; }) {
   // Local state for tags
   const [localTags, setLocalTags] = useState<string[]>([]);
+
+  // Status Modal State
+  const [statusModal, setStatusModal] = useState<{
+    isOpen: boolean;
+    type: "success" | "error" | "warning";
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: "success",
+    title: "",
+    message: "",
+  });
+
+  const showStatus = (type: "success" | "error" | "warning", title: string, message: string) => {
+    setStatusModal({ isOpen: true, type, title, message });
+  };
 
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
@@ -50,19 +69,22 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
   if (!previewData) return null;
 
   const handleSave = async () => {
-    if (!previewData.leadId) return;
+    if (!previewData.leadId || !workspaceId) {
+      if (!workspaceId) showStatus("error", "Error", "Workspace not found");
+      return;
+    }
     setIsSaving(true);
     try {
-      await updateDoc(doc(db, "leads", previewData.leadId), {
+      await updateDoc(doc(db, "workspaces", workspaceId, "leads", previewData.leadId), {
         subject: editedContent.subject,
         body: editedContent.body,
         followUp: editedContent.followUp,
         updatedAt: Date.now(),
       });
-      toast.success("Changes saved");
+      showStatus("success", "Saved", "Changes saved successfully");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to save changes");
+      showStatus("error", "Error", "Failed to save changes");
     } finally {
       setIsSaving(false);
     }
@@ -73,7 +95,7 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error("Login required");
+        showStatus("error", "Auth Error", "Login required");
         return;
       }
       const token = await user.getIdToken();
@@ -86,11 +108,12 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
       };
 
       const res = await axios.post("/api/sendEmail", payload, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Email queued/sent");
-      onClose();
+      showStatus("success", "Sent", "Email queued/sent successfully");
+      // Don't close immediately so user sees success modal
+      // onClose(); 
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.response?.data?.error || "Send failed");
+      showStatus("error", "Send Failed", err?.response?.data?.error || "Failed to send email");
     } finally {
       setIsSending(false);
     }
@@ -102,7 +125,7 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error("Login required");
+        showStatus("error", "Auth Error", "Login required");
         return;
       }
       const token = await user.getIdToken();
@@ -128,10 +151,10 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
         }
       }, 100);
 
-      toast.success(`Deliverability Score: ${res.data.score}/100`);
+      // toast.success(`Deliverability Score: ${res.data.score}/100`);
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.response?.data?.error || "Deliverability check failed");
+      showStatus("error", "Check Failed", err?.response?.data?.error || "Deliverability check failed");
     } finally {
       setIsCheckingDeliverability(false);
     }
@@ -144,7 +167,7 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
       body: deliverabilityResult.body || editedContent.body,
       followUp: editedContent.followUp,
     });
-    toast.success("Improvements applied!");
+    showStatus("success", "Applied", "Improvements applied successfully!");
     setShowDeliverability(false);
   };
 
@@ -153,7 +176,7 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error("Login required");
+        showStatus("error", "Auth Error", "Login required");
         return;
       }
       const token = await user.getIdToken();
@@ -169,42 +192,42 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      toast.success("Saved as template!");
+      showStatus("success", "Saved", "Saved as template successfully!");
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.response?.data?.error || "Failed to save template");
+      showStatus("error", "Error", err?.response?.data?.error || "Failed to save template");
     } finally {
       setIsSavingTemplate(false);
     }
   };
 
   const handleAddTag = async (tag: string) => {
-    if (!previewData.lead?.id) return;
+    if (!previewData.lead?.id || !workspaceId) return;
     try {
       const newTags = [...localTags, tag];
       setLocalTags(newTags); // Optimistic
-      await updateDoc(doc(db, "leads", previewData.lead.id), {
+      await updateDoc(doc(db, "workspaces", workspaceId, "leads", previewData.lead.id), {
         tags: arrayUnion(tag)
       });
-      toast.success("Tag added");
+      // toast.success("Tag added"); // Optional: maybe too noisy for modal? Let's keep toast for minor actions or remove
     } catch (error) {
       setLocalTags(localTags); // Revert
-      toast.error("Failed to add tag");
+      showStatus("error", "Error", "Failed to add tag");
     }
   };
 
   const handleRemoveTag = async (tag: string) => {
-    if (!previewData.lead?.id) return;
+    if (!previewData.lead?.id || !workspaceId) return;
     try {
       const newTags = localTags.filter(t => t !== tag);
       setLocalTags(newTags); // Optimistic
-      await updateDoc(doc(db, "leads", previewData.lead.id), {
+      await updateDoc(doc(db, "workspaces", workspaceId, "leads", previewData.lead.id), {
         tags: arrayRemove(tag)
       });
-      toast.success("Tag removed");
+      // toast.success("Tag removed");
     } catch (error) {
       setLocalTags(localTags); // Revert
-      toast.error("Failed to remove tag");
+      showStatus("error", "Error", "Failed to remove tag");
     }
   };
 
@@ -345,10 +368,10 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
                           <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
                             <div
                               className={`h-full transition-all ${(deliverabilityResult.original_score ?? 60) >= 80
-                                  ? 'bg-green-500'
-                                  : (deliverabilityResult.original_score ?? 60) >= 60
-                                    ? 'bg-yellow-500'
-                                    : 'bg-red-500'
+                                ? 'bg-green-500'
+                                : (deliverabilityResult.original_score ?? 60) >= 60
+                                  ? 'bg-yellow-500'
+                                  : 'bg-red-500'
                                 }`}
                               style={{ width: `${deliverabilityResult.original_score ?? 60}%` }}
                             />
@@ -443,10 +466,10 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
                             <div
                               key={idx}
                               className={`px-3 py-1 text-xs font-mono flex items-start gap-2 ${line.type === 'remove'
-                                  ? 'bg-red-500/10 text-red-400'
-                                  : line.type === 'add'
-                                    ? 'bg-green-500/10 text-green-400'
-                                    : 'text-muted-foreground'
+                                ? 'bg-red-500/10 text-red-400'
+                                : line.type === 'add'
+                                  ? 'bg-green-500/10 text-green-400'
+                                  : 'text-muted-foreground'
                                 }`}
                             >
                               <span className="select-none w-4 text-center shrink-0">
@@ -466,10 +489,10 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
                             <div
                               key={idx}
                               className={`px-3 py-1 text-[11px] font-mono flex items-start gap-2 ${line.type === 'remove'
-                                  ? 'bg-red-500/10 text-red-400'
-                                  : line.type === 'add'
-                                    ? 'bg-green-500/10 text-green-400'
-                                    : 'text-muted-foreground'
+                                ? 'bg-red-500/10 text-red-400'
+                                : line.type === 'add'
+                                  ? 'bg-green-500/10 text-green-400'
+                                  : 'text-muted-foreground'
                                 }`}
                             >
                               <span className="select-none w-4 text-center shrink-0 mt-0.5">
@@ -613,6 +636,13 @@ export default function EmailPreviewDrawer({ open, onClose, previewData }: { ope
           </div>
         </div>
       </Dialog>
+      <StatusModal
+        isOpen={statusModal.isOpen}
+        onClose={() => setStatusModal({ ...statusModal, isOpen: false })}
+        type={statusModal.type}
+        title={statusModal.title}
+        message={statusModal.message}
+      />
     </Transition.Root>
   );
 }

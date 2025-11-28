@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     await adminDB.collection("users").doc(uid).update({
       onboardingCompleted: true,
       onboardingStep: 4,
-      planType: plan, // Use planType as requested
+      // planType: plan, // REMOVED: Onboarding must never overwrite planType
       updatedAt: now,
     });
 

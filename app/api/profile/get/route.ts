@@ -11,15 +11,35 @@ export async function GET(req: Request) {
     const decoded = await adminAuth.verifyIdToken(token);
     const uid = decoded.uid;
 
-    const ref = adminDB
-      .collection("users")
-      .doc(uid)
-      .collection("profile")
-      .doc("main");
+    // Fetch from legacy main doc as requested
+    const mainRef = adminDB.collection("users").doc(uid).collection("profile").doc("main");
+    const mainSnap = await mainRef.get();
 
-    const snap = await ref.get();
+    console.log(`[Profile Get] UID: ${uid}`);
+    console.log(`[Profile Get] Main Doc Exists: ${mainSnap.exists}`);
 
-    return NextResponse.json({ profile: snap.exists ? snap.data() : null });
+    const data = mainSnap.exists ? mainSnap.data() || {} : {};
+
+    // Map fields from various formats to profile format
+    const profile = {
+        ...data,
+        fullName: data.fullName || data.name || data.displayName || "",
+        company: data.company || data.companyName || "",
+        website: data.website || data.companyWebsite || "",
+        services: data.services || data.servicesOffered || [],
+        // Ensure other fields are present
+        gender: data.gender || "",
+        role: data.role || "",
+        persona: data.persona || data.personaTone || "",
+        companyDescription: data.companyDescription || "",
+        companyLocation: data.companyLocation || "",
+        about: data.about || "",
+        linkedin: data.linkedin || "",
+        timezone: data.timezone || "UTC",
+        language: data.language || "en",
+    };
+
+    return NextResponse.json({ profile });
   } catch (err) {
     console.error("PROFILE GET ERROR:", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

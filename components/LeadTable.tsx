@@ -52,8 +52,9 @@ import { TagInput } from "./crm/TagInput";
 import { usePlanLimit } from "@/hooks/usePlanLimit";
 
 export default function LeadTable() {
-  const { checkLimit } = usePlanLimit();
+  const { checkLimit, PlanLimitModal, refreshPlan } = usePlanLimit();
   const [leads, setLeads] = useState<any[]>([]);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loadingAction, setLoadingAction] = useState<{ leadId: string; action: string } | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "pipeline">("table");
 
@@ -72,9 +73,6 @@ export default function LeadTable() {
   // -----------------------------------------
   // FETCH LEADS
   // -----------------------------------------
-  // -----------------------------------------
-  // FETCH LEADS
-  // -----------------------------------------
   const fetchLeads = async (uid?: string) => {
     if (!uid) return;
 
@@ -84,15 +82,17 @@ export default function LeadTable() {
       if (userDoc.empty) return;
 
       const userData = userDoc.docs[0].data();
-      const workspaceId = userData.currentWorkspaceId;
+      const currentWorkspaceId = userData.currentWorkspaceId;
 
-      if (!workspaceId) {
+      if (!currentWorkspaceId) {
         console.warn("No workspace ID found for user");
         return;
       }
 
+      setWorkspaceId(currentWorkspaceId);
+
       // 2. Query workspace leads
-      const q = query(collection(db, "workspaces", workspaceId, "leads"));
+      const q = query(collection(db, "workspaces", currentWorkspaceId, "leads"));
       const snap = await getDocs(q);
 
       setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -138,12 +138,16 @@ export default function LeadTable() {
   // UPDATE STATUS
   // -----------------------------------------
   const updateStatus = async (leadId: string, newStatus: string) => {
+    if (!workspaceId) {
+      toast.error("Workspace not loaded");
+      return;
+    }
     // Optimistic Update
     const previousLeads = [...leads];
     setLeads(leads.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
 
     try {
-      const ref = doc(db, "leads", leadId);
+      const ref = doc(db, "workspaces", workspaceId, "leads", leadId);
       await updateDoc(ref, { status: newStatus });
       toast.success(`Status updated`);
     } catch (err) {
@@ -157,6 +161,7 @@ export default function LeadTable() {
   // TAG MANAGEMENT
   // -----------------------------------------
   const handleAddTag = async (leadId: string, tag: string) => {
+    if (!workspaceId) return;
     const previousLeads = [...leads];
     setLeads(leads.map(l => {
       if (l.id === leadId) {
@@ -168,7 +173,7 @@ export default function LeadTable() {
     }));
 
     try {
-      await updateDoc(doc(db, "leads", leadId), {
+      await updateDoc(doc(db, "workspaces", workspaceId, "leads", leadId), {
         tags: arrayUnion(tag)
       });
       toast.success("Tag added");
@@ -179,6 +184,7 @@ export default function LeadTable() {
   };
 
   const handleRemoveTag = async (leadId: string, tag: string) => {
+    if (!workspaceId) return;
     const previousLeads = [...leads];
     setLeads(leads.map(l => {
       if (l.id === leadId) {
@@ -188,7 +194,7 @@ export default function LeadTable() {
     }));
 
     try {
-      await updateDoc(doc(db, "leads", leadId), {
+      await updateDoc(doc(db, "workspaces", workspaceId, "leads", leadId), {
         tags: arrayRemove(tag)
       });
       toast.success("Tag removed");
@@ -279,17 +285,19 @@ export default function LeadTable() {
       });
 
       await updateStatus(lead.id, "contacted"); // AUTO-SET STATUS
+      refreshPlan(); // Refresh plan data
 
       setPreviewEmail({
         type: "email",
         leadId: lead.id,
+        lead: lead, // Pass full lead object for 'to' field
         subject: res.data.subject,
         body: res.data.body,
         followUp: res.data.followUp,
       });
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.response?.data?.error || "Email generation failed");
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.error || "Email generation failed");
     } finally {
       setLoadingAction(null);
     }
@@ -319,11 +327,12 @@ export default function LeadTable() {
         connect: res.data.connectMessage,
         followup: res.data.followUp,
       });
+      refreshPlan(); // Refresh plan data
 
       toast.success("LinkedIn messages ready");
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.response?.data?.error || "LinkedIn generation failed");
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.error || "LinkedIn generation failed");
     } finally {
       setLoadingAction(null);
     }
@@ -350,10 +359,11 @@ export default function LeadTable() {
       });
 
       setPreviewSequence(res.data);
+      refreshPlan(); // Refresh plan data
       toast.success("Sequence generated successfully");
     } catch (err: any) {
       console.error(err);
-      toast.error(err?.response?.data?.error || "Sequence generation failed");
+      toast.error(err?.response?.data?.error?.message || err?.response?.data?.error || "Sequence generation failed");
     } finally {
       setLoadingAction(null);
     }
@@ -417,6 +427,7 @@ export default function LeadTable() {
   // -----------------------------------------
   return (
     <div className="space-y-4">
+      <PlanLimitModal />
       {/* Controls */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-card p-4 rounded-lg border border-border">
         <div className="flex items-center gap-2 w-full md:w-auto flex-1 flex-wrap">
@@ -642,13 +653,14 @@ export default function LeadTable() {
 
                           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Preview & Edit</DropdownMenuLabel>
                           <DropdownMenuItem
-                            disabled={!lead.subject}
+                            disabled={!lead.subject && !lead.generatedEmail?.subject}
                             onClick={() => setPreviewEmail({
                               type: "email",
                               leadId: lead.id,
-                              subject: lead.subject,
-                              body: lead.body,
-                              followUp: lead.followUp,
+                              lead: lead,
+                              subject: lead.subject || lead.generatedEmail?.subject,
+                              body: lead.body || lead.generatedEmail?.body,
+                              followUp: lead.followUp || lead.generatedEmail?.followUp,
                             })}
                           >
                             <Mail className="mr-2 h-4 w-4" />
@@ -707,6 +719,7 @@ export default function LeadTable() {
           open={!!previewEmail}
           onClose={() => setPreviewEmail(null)}
           previewData={previewEmail}
+          workspaceId={workspaceId}
         />
       )}
       {previewLinkedIn && (

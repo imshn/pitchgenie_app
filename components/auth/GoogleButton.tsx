@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { FcGoogle } from "react-icons/fc";
 
 import { useRouter } from "next/navigation";
@@ -17,20 +17,19 @@ export default function GoogleButton(props: { text: string; }) {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
 
-      // Ensure user document exists with onboarding fields
-      const userRef = doc(db, "users", result.user.uid);
-      await setDoc(
-        userRef,
-        {
-          fullName: result.user.displayName || result.user.email,
-          email: result.user.email,
-          onboardingCompleted: false,
-          onboardingStep: 1,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+      // Call Bootstrap API
+      const token = await result.user.getIdToken();
+      await fetch("/api/auth/bootstrap", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
         },
-        { merge: true }
-      );
+        body: JSON.stringify({
+          fullName: result.user.displayName,
+          email: result.user.email
+        })
+      });
 
       toast.success("Logged in successfully");
       router.push("/dashboard");

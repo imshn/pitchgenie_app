@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { verifyUser } from "@/lib/verify-user";
-import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
-import { summarizeCompanyWithGroq } from "@/lib/groq/client";
+import { checkAndConsumeOperation, checkOperationLimits } from "@/lib/server/checkAndConsumeOperation";
+import { summarizeCompanyWithOpenAI } from "@/lib/openai/client";
 import { adminDB } from "@/lib/firebase-admin";
+import { getUserPlan } from "@/lib/server/getUserPlan";
 
 /**
  * Simple web scraper using fetch
@@ -61,16 +62,25 @@ export async function POST(req: Request) {
       );
     }
 
+    // Get user plan data for profile
+    const planData = await getUserPlan(uid);
+    const userProfile = planData.profile;
+
     // Check and consume credits based on mode
     const operation = mode === "light" ? "lightScrape" : "deepScrape";
-    await checkAndConsumeOperation(uid, operation);
+    
+    // 1. Check limits BEFORE generation (Read-only)
+    await checkOperationLimits(uid, operation);
 
     // Scrape the website
     console.log(`[POST /api/scrapeCompany] Scraping ${url} in ${mode} mode`);
     const scrapedContent = await scrapeWebsite(url, mode);
 
-    // Summarize using Groq AI
-    const summary = await summarizeCompanyWithGroq(url, scrapedContent, mode);
+    // Summarize using OpenAI
+    const summary = await summarizeCompanyWithOpenAI(url, scrapedContent, mode, userProfile);
+
+    // 2. Charge credits AFTER successful generation
+    await checkAndConsumeOperation(uid, operation);
 
     // Save to lead document if leadId provided
     if (leadId) {

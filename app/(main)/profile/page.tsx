@@ -78,6 +78,13 @@ export default function SettingsPage() {
         const data = res.data.profile;
         setProfile({
           ...data,
+          // Handle company object if present
+          company: typeof data.company === 'object' ? data.company.name || "" : data.company || "",
+          // Map nested company fields if they are missing at top level but present in company object
+          website: data.website || (data.company?.website) || "",
+          companyDescription: data.companyDescription || (data.company?.about) || "",
+          companyLocation: data.companyLocation || (data.company?.location) || "", // Assuming location might be there
+
           // Ensure services is an array
           services: Array.isArray(data.services) ? data.services : (data.services ? data.services.split(',') : []),
           // Map personaTone to persona if needed, or prefer persona

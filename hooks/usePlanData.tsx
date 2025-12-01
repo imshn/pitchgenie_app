@@ -51,6 +51,7 @@ export interface EffectivePlanClient {
     personalPlanType: string;
     planData: PlanData;
     usage: UsageData;
+    membersCount: number; // NEW
     remaining: {
         credits: number;
         lightScrapes: number; // NEW: separate from deep
@@ -58,6 +59,7 @@ export interface EffectivePlanClient {
         sequences: number;
         templates: number;
         smtpDailyRemaining: number; // NEW: daily remaining
+        members: number; // NEW
     };
     canScrapeDeep: boolean;
 }

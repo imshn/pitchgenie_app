@@ -1,63 +1,31 @@
 import { NextResponse } from "next/server";
-import { adminAuth } from "@/lib/firebase-admin";
-import OpenAI from "openai";
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+import { verifyUser } from "@/lib/verify-user";
+import { analyzeReplyWithOpenAI } from "@/lib/openai/client";
+import { getUserPlan } from "@/lib/server/getUserPlan";
 
 export async function POST(req: Request) {
   try {
-    // Auth
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    const decoded = await adminAuth.verifyIdToken(token);
+    const { uid } = await verifyUser();
+    const { replyText } = await req.json();
 
-    const { uid, replyText } = await req.json();
-    if (decoded.uid !== uid) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (!replyText) {
+      return NextResponse.json({ error: "Reply text is required" }, { status: 400 });
     }
 
-    const prompt = `
-You analyze cold email replies.
+    // Get user plan data for profile
+    const planData = await getUserPlan(uid);
+    const userProfile = planData.profile;
 
-Return STRICT JSON ONLY, no commentary.
+    // Analyze reply using OpenAI
+    // Note: Currently not charging credits for this operation as per existing logic
+    const result = await analyzeReplyWithOpenAI(replyText, userProfile);
 
-Analyze this reply:
-
-"${replyText}"
-
-Return JSON:
-{
-  "sentiment": "interested | positive | neutral | negative | not_interested | pricing_question | more_info",
-  "summary": "summary of what they said",
-  "reply": "recommended AI reply text"
-}
-`;
-
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: 'json_object' },
-    });
-
-    let raw = completion.choices[0].message?.content || "{}";
-
-    let json;
-    try {
-      json = JSON.parse(raw);
-    } catch (e) {
-      console.error("Invalid JSON:", raw);
-      return NextResponse.json(
-        { error: "AI returned invalid JSON", raw },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(json);
-  } catch (e) {
-    console.error("ANALYZE ERROR:", e);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(result);
+  } catch (error: any) {
+    console.error("[POST /api/analyzeReply] Error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to analyze reply" },
+      { status: 500 }
+    );
   }
 }

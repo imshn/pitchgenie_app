@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MemberList } from "@/components/workspace/MemberList";
 import { InviteMemberModal } from "@/components/workspace/InviteMemberModal";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PlanLimitAlert } from "@/components/billing/PlanLimitAlert";
 
 export default function TeamPage() {
     const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -23,6 +24,8 @@ export default function TeamPage() {
                 </div>
                 <InviteMemberModal onInviteSuccess={handleInviteSuccess} />
             </div>
+
+            <PlanLimitAlert limitType="members" />
 
             <Card>
                 <CardHeader>

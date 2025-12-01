@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyUser } from "@/lib/verify-user";
-import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
-import { generateLinkedInMessageWithGroq } from "@/lib/groq/client";
+import { checkAndConsumeOperation, checkOperationLimits } from "@/lib/server/checkAndConsumeOperation";
+import { generateLinkedInMessageWithOpenAI } from "@/lib/openai/client";
 import { getUserPlan } from "@/lib/server/getUserPlan";
 import { adminDB } from "@/lib/firebase-admin";
 
@@ -45,15 +45,18 @@ export async function POST(req: Request) {
       leadData = leadDoc.data();
     }
 
-    // Check and consume credits (1 credit for LinkedIn message)
-    await checkAndConsumeOperation(uid, "linkedinMessage");
+    // 1. Check limits BEFORE generation (Read-only)
+    await checkOperationLimits(uid, "linkedinMessage");
 
-    // Generate LinkedIn message using Groq
-    const result = await generateLinkedInMessageWithGroq({
+    // 2. Generate LinkedIn message using OpenAI
+    const result = await generateLinkedInMessageWithOpenAI({
       userProfile,
       lead: leadData,
       persona: userProfile?.persona || "Founder",
     });
+
+    // 3. Charge credits AFTER successful generation
+    await checkAndConsumeOperation(uid, "linkedinMessage");
 
     // Save LinkedIn message to lead document if leadId provided
     if (leadId) {

@@ -176,6 +176,7 @@ export interface MergedPlanData {
   planData: PlanDocument;
   usage: UsageDocument;
   profile: UserProfile | null;
+  membersCount: number; // NEW: current member count
   remaining: {
     credits: number;
     lightScrapes: number;
@@ -183,6 +184,7 @@ export interface MergedPlanData {
     sequences: number;
     templates: number;
     smtpDailyRemaining: number;
+    members: number; // NEW: remaining member slots
   };
   canScrapeDeep: boolean;
 }

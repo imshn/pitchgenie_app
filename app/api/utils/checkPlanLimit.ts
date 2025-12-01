@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { EffectivePlan } from "@/lib/plan-utils";
+import { MergedPlanData, OperationErrorCode } from "@/lib/types/plans";
 
 type FeatureType = 
   | "members" 
@@ -14,18 +14,18 @@ type FeatureType =
   | "smtpCustom";
 
 export function checkPlanLimit(
-  plan: EffectivePlan,
+  plan: MergedPlanData,
   feature: FeatureType,
   costOrCount: number = 1
 ): NextResponse | null {
   
-  const { planData, usage, remaining } = plan;
+  const { planData, remaining } = plan;
 
   // 1. Check Credits (Global check for cost-based features)
   if (feature === "credits") {
     if (remaining.credits < costOrCount) {
       return NextResponse.json({ 
-        error: "INSUFFICIENT_CREDITS", 
+        error: OperationErrorCode.INSUFFICIENT_CREDITS, 
         message: "You do not have enough credits for this action.",
         current: remaining.credits,
         required: costOrCount
@@ -36,11 +36,12 @@ export function checkPlanLimit(
   // 2. Check Feature Specific Limits
   switch (feature) {
     case "scraper":
-      if (remaining.scraper !== "unlimited" && remaining.scraper < costOrCount) {
+      // Checking Light Scrapes by default for "scraper" feature
+      if (remaining.lightScrapes < costOrCount) {
          return NextResponse.json({ 
-          error: "LIMIT_EXCEEDED", 
-          message: `You have reached your scraper limit of ${planData.scraperLimit} for this month. Upgrade to Pro for unlimited scraping.`,
-          limit: planData.scraperLimit
+          error: OperationErrorCode.SCRAPER_LIMIT_REACHED, 
+          message: `You have reached your scraper limit of ${planData.scraperLightLimit} for this month. Upgrade to Pro for more.`,
+          limit: planData.scraperLightLimit
         }, { status: 403 });
       }
       break;
@@ -48,7 +49,7 @@ export function checkPlanLimit(
     case "sequence":
       if (remaining.sequences < costOrCount) {
          return NextResponse.json({ 
-          error: "LIMIT_EXCEEDED", 
+          error: OperationErrorCode.SEQUENCE_LIMIT, 
           message: `You have reached your active sequence limit of ${planData.sequenceLimit}.`,
           limit: planData.sequenceLimit
         }, { status: 403 });
@@ -58,7 +59,7 @@ export function checkPlanLimit(
     case "templates":
       if (remaining.templates < costOrCount) {
          return NextResponse.json({ 
-          error: "LIMIT_EXCEEDED", 
+          error: OperationErrorCode.TEMPLATE_LIMIT, 
           message: `You have reached your template limit of ${planData.templateLimit}.`,
           limit: planData.templateLimit
         }, { status: 403 });
@@ -66,14 +67,9 @@ export function checkPlanLimit(
       break;
 
     case "members":
-      // For members, we usually check current count vs limit. 
-      // Assuming 'costOrCount' passed here is the NEW total count or we check remaining?
-      // Let's assume the caller checks remaining.members or passes the current count to compare.
-      // But EffectivePlan doesn't have 'remaining.members'. 
-      // Let's rely on planData.memberLimit directly if needed, but for now let's skip or implement if needed.
       if (planData.memberLimit !== -1 && costOrCount > planData.memberLimit) {
          return NextResponse.json({ 
-          error: "LIMIT_EXCEEDED", 
+          error: OperationErrorCode.MEMBER_LIMIT_REACHED, 
           message: `You have reached your team member limit of ${planData.memberLimit}.`,
           limit: planData.memberLimit
         }, { status: 403 });
@@ -91,10 +87,18 @@ export function checkPlanLimit(
        break;
 
     case "deepScraper":
-      if (!planData.deepScraper) {
+      if (!planData.deepScraperEnabled) {
           return NextResponse.json({ 
-              error: "DEEP_SCRAPER_NOT_ALLOWED", 
+              error: OperationErrorCode.DEEP_SCRAPER_NOT_ALLOWED, 
               message: "Deep scraping is only available on Starter plans and above." 
+          }, { status: 403 });
+      }
+      // Also check limit
+      if (remaining.deepScrapes < costOrCount) {
+        return NextResponse.json({ 
+            error: OperationErrorCode.SCRAPER_LIMIT_REACHED, 
+            message: `You have reached your deep scraper limit of ${planData.scraperDeepLimit}.`,
+            limit: planData.scraperDeepLimit
           }, { status: 403 });
       }
       break;

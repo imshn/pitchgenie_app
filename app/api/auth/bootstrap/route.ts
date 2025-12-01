@@ -40,14 +40,15 @@ export async function POST(req: Request) {
     }
 
     // Parse body for optional params
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let body: any = {};
     try {
       body = await req.json();
-    } catch (e) {
+    } catch {
       // Body might be empty, ignore
     }
 
-    const { requestedPlan, idempotencyKey } = body;
+    const { requestedPlan } = body;
     
     // Use body values as fallback if token missing them (rare)
     if (!email && body.email) email = body.email;
@@ -71,27 +72,51 @@ export async function POST(req: Request) {
 
     // 3. Transactional Bootstrap
     const result = await adminDB.runTransaction(async (t) => {
+      // --- PHASE 1: READS ---
       const userRef = adminDB.collection("users").doc(uid);
       const userDoc = await t.get(userRef);
       
-      let userData = userDoc.exists ? userDoc.data()! : {};
-      let isNewUser = !userDoc.exists;
+      const userData = userDoc.exists ? userDoc.data()! : {};
+      const isNewUser = !userDoc.exists;
       
       // Determine Billing Cycle
       const now = new Date();
-      let billingStartDate = userData.billingStartDate?.toDate() || now;
-      
-      // If new user with paid plan, or existing user upgrading (though upgrade usually happens via webhook),
-      // strictly speaking this bootstrap is for signup/login. 
-      // If new user, billingStartDate is NOW.
-      // If existing user, keep existing.
-      
-      // Calculate cycle details
+      const billingStartDate = userData.billingStartDate?.toDate() || now;
       const nextResetDate = new Date(billingStartDate.getTime() + 30 * 24 * 60 * 60 * 1000);
       const currentCycleId = getCycleId(billingStartDate);
+
+      // Prepare Refs
+      const profileRef = userRef.collection("profile").doc("main");
+      const userUsageRef = userRef.collection("usage").doc(currentCycleId);
       
-      // Prepare User Data
-      const userUpdate: any = {
+      // Read Profile & User Usage
+      const profileDoc = await t.get(profileRef);
+      const userUsageDoc = await t.get(userUsageRef);
+
+      // Determine Workspace ID & Refs
+      let workspaceId = userData.currentWorkspaceId || userData.workspaceId;
+      let workspaceRef: FirebaseFirestore.DocumentReference | null = null;
+      let wsDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+      let wsUsageRef: FirebaseFirestore.DocumentReference | null = null;
+      let wsUsageDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+
+      if (workspaceId) {
+        workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
+        wsDoc = await t.get(workspaceRef);
+        wsUsageRef = workspaceRef.collection("usage").doc(currentCycleId);
+        wsUsageDoc = await t.get(wsUsageRef);
+      } else {
+        // Will create new workspace, no need to read
+        workspaceRef = adminDB.collection("workspaces").doc();
+        workspaceId = workspaceRef.id;
+        wsUsageRef = workspaceRef.collection("usage").doc(currentCycleId);
+      }
+
+      // --- PHASE 2: WRITES ---
+      
+      // 1. User Data Preparation
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const userUpdate: Record<string, any> = {
         updatedAt: FieldValue.serverTimestamp(),
       };
 
@@ -99,39 +124,48 @@ export async function POST(req: Request) {
         createdDocs.push("users");
         userUpdate.email = email;
         userUpdate.displayName = displayName || "";
-        userUpdate.planType = planType;
-        userUpdate.onboardingCompleted = onboardingCompleted;
+        userUpdate.planType = planType; // Defaults to "free" or uses requestedPlan
+        userUpdate.onboardingCompleted = true; // Skip onboarding for all new users
         userUpdate.billingStartDate = Timestamp.fromDate(billingStartDate);
         userUpdate.nextResetDate = Timestamp.fromDate(nextResetDate);
         userUpdate.currentCycleId = currentCycleId;
         userUpdate.createdAt = FieldValue.serverTimestamp();
+        
+        // Link new workspace
+        userUpdate.currentWorkspaceId = workspaceId;
+        userUpdate.workspaces = FieldValue.arrayUnion(workspaceId);
       } else {
         existedDocs.push("users");
-        // Auto-heal missing fields
-        if (!userData.planType) userUpdate.planType = "free";
-        if (userData.onboardingCompleted === undefined) {
-          // If paid or legacy free, mark completed to avoid forcing onboarding
-          const currentPlan = userData.planType || "free";
-          userUpdate.onboardingCompleted = currentPlan !== "free" ? true : true; 
+        
+        // Only update plan if explicitly requested (upgrade flow)
+        // Otherwise, preserve existing plan
+        if (requestedPlan) {
+            userUpdate.planType = requestedPlan;
+        } else if (!userData.planType) {
+            // Auto-heal if missing
+            userUpdate.planType = "free";
         }
+
+        // Ensure onboarding is marked completed for existing users too
+        if (userData.onboardingCompleted !== true) {
+             userUpdate.onboardingCompleted = true;
+        }
+
         if (!userData.billingStartDate) {
             userUpdate.billingStartDate = Timestamp.fromDate(billingStartDate);
             userUpdate.nextResetDate = Timestamp.fromDate(nextResetDate);
             userUpdate.currentCycleId = currentCycleId;
         }
+        if (!userData.currentWorkspaceId) {
+             userUpdate.currentWorkspaceId = workspaceId;
+        }
       }
 
-      // Workspace Logic
-      let workspaceId = userData.currentWorkspaceId || userData.workspaceId;
-      let workspaceRef: FirebaseFirestore.DocumentReference;
-      
-      if (!workspaceId) {
-        // Create new workspace
-        workspaceRef = adminDB.collection("workspaces").doc();
-        workspaceId = workspaceRef.id;
+      // 2. Workspace Logic
+      if (!wsDoc || !wsDoc.exists) {
+        // Create new workspace (or re-create if missing)
         createdDocs.push("workspace");
-        
-        t.set(workspaceRef, {
+        t.set(workspaceRef!, {
           workspaceName: generateWorkspaceName(email, displayName),
           ownerUid: uid,
           members: [{
@@ -148,40 +182,11 @@ export async function POST(req: Request) {
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp()
         });
-
-        userUpdate.currentWorkspaceId = workspaceId;
-        userUpdate.workspaces = FieldValue.arrayUnion(workspaceId);
       } else {
-        workspaceRef = adminDB.collection("workspaces").doc(workspaceId);
-        const wsDoc = await t.get(workspaceRef);
-        if (!wsDoc.exists) {
-            // Re-create if missing (Auto-heal)
-            createdDocs.push("workspace");
-            t.set(workspaceRef, {
-                workspaceName: generateWorkspaceName(email, displayName),
-                ownerUid: uid,
-                members: [{
-                    uid,
-                    email,
-                    role: "owner",
-                    joinedAt: Timestamp.fromDate(now)
-                }],
-                memberIds: [uid],
-                planId: userUpdate.planType || userData.planType || "free",
-                billingStartDate: Timestamp.fromDate(billingStartDate),
-                nextResetDate: Timestamp.fromDate(nextResetDate),
-                currentCycleId: currentCycleId,
-                createdAt: FieldValue.serverTimestamp(),
-                updatedAt: FieldValue.serverTimestamp()
-            });
-        } else {
-            existedDocs.push("workspace");
-        }
+        existedDocs.push("workspace");
       }
 
-      // Profile Logic
-      const profileRef = userRef.collection("profile").doc("main"); // Using 'main' as canonical
-      const profileDoc = await t.get(profileRef);
+      // 3. Profile Logic
       if (!profileDoc.exists) {
         createdDocs.push("profile");
         t.set(profileRef, {
@@ -204,9 +209,7 @@ export async function POST(req: Request) {
         existedDocs.push("profile");
       }
 
-      // User Usage Logic
-      const userUsageRef = userRef.collection("usage").doc(currentCycleId);
-      const userUsageDoc = await t.get(userUsageRef);
+      // 4. User Usage Logic
       if (!userUsageDoc.exists) {
         createdDocs.push("usage");
         t.set(userUsageRef, {
@@ -225,12 +228,10 @@ export async function POST(req: Request) {
         existedDocs.push("usage");
       }
 
-      // Workspace Usage Logic
-      const wsUsageRef = workspaceRef.collection("usage").doc(currentCycleId);
-      const wsUsageDoc = await t.get(wsUsageRef);
-      if (!wsUsageDoc.exists) {
+      // 5. Workspace Usage Logic
+      if (!wsUsageDoc || !wsUsageDoc.exists) {
         createdDocs.push("workspaceUsage");
-        t.set(wsUsageRef, {
+        t.set(wsUsageRef!, {
           creditsUsed: 0,
           lightScrapesUsed: 0,
           deepScrapesUsed: 0,
@@ -246,7 +247,7 @@ export async function POST(req: Request) {
         existedDocs.push("workspaceUsage");
       }
 
-      // Commit User Updates
+      // 6. Commit User Updates
       if (isNewUser) {
         t.set(userRef, userUpdate);
       } else {
@@ -271,6 +272,7 @@ export async function POST(req: Request) {
       existed: existedDocs
     });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error(`${logPrefix} Error:`, error);
     return NextResponse.json({ error: error.message || "Bootstrap failed" }, { status: 500 });

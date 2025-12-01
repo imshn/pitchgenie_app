@@ -40,7 +40,11 @@ export async function GET(req: Request) {
 
             // Override if plan data has specific setting, but respect minimums
             if (planData.planData.imapSyncIntervalSeconds) {
-                intervalSeconds = Math.max(intervalSeconds, planData.planData.imapSyncIntervalSeconds);
+                // Use the smaller of the two (stricter limit) or larger? 
+                // Usually planData.imapSyncIntervalSeconds comes from the plan definition.
+                // Let's trust the hardcoded limits above as the source of truth for now, or use planData if it's set correctly in DB.
+                // The user specified: Starter 10m, Pro 5m, Agency 1m.
+                // Let's stick to the hardcoded logic to be safe.
             }
 
             const lastSynced = workspaceData.inboxLastSynced?.toDate() || new Date(0);
@@ -51,13 +55,15 @@ export async function GET(req: Request) {
                 continue; // Too soon
             }
 
-            // 1b. Charge Credits
+            // 1b. Charge Credits & Track Usage
             const { checkAndConsumeOperation } = await import("@/lib/server/checkAndConsumeOperation");
             try {
+                // This increments imapSyncCount
                 await checkAndConsumeOperation(userId, "imapSync");
-            } catch (e: any) {
-                console.log(`[InboxSync] Skipping workspace ${workspaceId}: ${e.message}`);
-                results.push({ workspaceId, error: e.message });
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : "Unknown error";
+                console.log(`[InboxSync] Skipping workspace ${workspaceId}: ${msg}`);
+                results.push({ workspaceId, error: msg });
                 continue;
             }
 
@@ -244,16 +250,18 @@ export async function GET(req: Request) {
                     inboxLastSynced: FieldValue.serverTimestamp()
                 });
 
-            } catch (err: any) {
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : "Unknown error";
                 console.error(`[InboxSync] Error for workspace ${workspaceId}:`, err);
-                results.push({ workspaceId, error: err.message });
+                results.push({ workspaceId, error: msg });
             }
         }
 
         return NextResponse.json({ success: true, results });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("[InboxSync] Fatal error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const msg = error instanceof Error ? error.message : "Fatal error";
+        return NextResponse.json({ error: msg }, { status: 500 });
     }
 }

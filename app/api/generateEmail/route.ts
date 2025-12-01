@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyUser } from "@/lib/verify-user";
-import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
-import { generateEmailWithGroq } from "@/lib/groq/client";
+import { checkAndConsumeOperation, checkOperationLimits } from "@/lib/server/checkAndConsumeOperation";
+import { generateEmailWithOpenAI } from "@/lib/openai/client";
 import { getUserPlan } from "@/lib/server/getUserPlan";
 import { adminDB } from "@/lib/firebase-admin";
 
@@ -20,14 +20,8 @@ export async function POST(req: Request) {
     // Get user plan data for profile
     const planData = await getUserPlan(uid);
     const userProfile = planData.profile;
-    const workspaceId = null; // Removed incorrect access
-
-    // Actually getUserPlan returns { planData, profile, usage }. 
-    // planData usually contains limits. 
-    // We need to fetch the user's currentWorkspaceId.
-    // Let's fetch it directly to be safe, or check if getUserPlan returns it.
-    // Looking at getUserPlan.ts (I can't see it but I can assume).
-    // Let's just fetch the user doc to be sure.
+    
+    // Fetch workspace ID
     const userDoc = await adminDB.collection("users").doc(uid).get();
     const currentWorkspaceId = userDoc.data()?.currentWorkspaceId;
 
@@ -51,16 +45,19 @@ export async function POST(req: Request) {
       leadData = leadDoc.data();
     }
 
-    // Check and consume credits (1 credit for email generation)
-    await checkAndConsumeOperation(uid, "aiGeneration");
+    // 1. Check limits BEFORE generation (Read-only)
+    await checkOperationLimits(uid, "aiGeneration");
 
-    // Generate email using Groq
-    const result = await generateEmailWithGroq({
+    // 2. Generate email using OpenAI (GPT-4o-mini)
+    const result = await generateEmailWithOpenAI({
       userProfile,
       lead: leadData,
       companySummary: leadData?.aiSummary || null,
       persona: userProfile?.persona || "Founder",
     });
+
+    // 3. Charge credits AFTER successful generation
+    await checkAndConsumeOperation(uid, "aiGeneration");
 
     // Save generated email to lead document if leadId provided
     if (leadId) {
@@ -70,28 +67,20 @@ export async function POST(req: Request) {
         .collection("leads")
         .doc(leadId)
         .update({
-          // Save as current draft
-          subject: result.subject,
-          body: result.body,
-          followUp: result.followUp,
-          // Keep history in generatedEmail
-          generatedEmail: {
+          lastGeneratedEmail: {
             subject: result.subject,
             body: result.body,
             followUp: result.followUp,
             generatedAt: new Date().toISOString(),
           },
+          status: "contacted", // Auto-update status
           updatedAt: new Date().toISOString(),
         });
     }
 
     console.log(`[POST /api/generateEmail] Generated email for user ${uid}`);
 
-    return NextResponse.json({
-      subject: result.subject,
-      body: result.body,
-      followUp: result.followUp,
-    });
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error("[POST /api/generateEmail] Error:", error);
 

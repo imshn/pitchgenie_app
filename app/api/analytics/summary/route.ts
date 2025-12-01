@@ -80,6 +80,9 @@ export async function GET(req: Request) {
         sequence_generated: 0,
         scraper_run: 0,
         credits_used: 0,
+        deliverability_check: 0,
+        email_opened: 0,
+        email_replied: 0,
       };
     }
 
@@ -105,6 +108,15 @@ export async function GET(req: Request) {
           break;
         case 'scraper_run':
           seriesMap[dateKey].scraper_run += 1;
+          break;
+        case 'deliverability_check':
+          seriesMap[dateKey].deliverability_check += 1;
+          break;
+        case 'email_opened':
+          seriesMap[dateKey].email_opened += 1;
+          break;
+        case 'email_replied':
+          seriesMap[dateKey].email_replied += 1;
           break;
         default:
           break;

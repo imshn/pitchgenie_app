@@ -85,10 +85,14 @@ export async function POST(req: Request) {
         messageCount,
         saved: saveConfig || false,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[POST /api/imap/test] Connection failed:", error);
 
-      if (error.authenticationFailed) {
+      const err = error as any; // Temporary cast for specific error properties if needed, or use type guards
+      // Since imapflow errors are not well typed here, we might need to keep 'any' or check properties safely.
+      // Let's use a safer approach.
+      
+      if (err?.authenticationFailed) {
         return NextResponse.json(
           {
             success: false,
@@ -98,7 +102,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (error.code === "ETIMEDOUT" || error.code === "ECONNREFUSED") {
+      if (err?.code === "ETIMEDOUT" || err?.code === "ECONNREFUSED") {
         return NextResponse.json(
           {
             success: false,
@@ -111,15 +115,16 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: error.message || "IMAP verification failed"
+          error: err?.message || "IMAP verification failed"
         },
         { status: 400 }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[POST /api/imap/test] Error:", error);
+    const message = error instanceof Error ? error.message : "Failed to test IMAP";
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to test IMAP" },
+      { success: false, error: message },
       { status: 500 }
     );
   }

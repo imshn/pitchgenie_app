@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Upload, FileText, User, LogOut, Zap, CreditCard, Settings, UserPlus, Inbox } from "lucide-react";
+import { LayoutDashboard, Users, Upload, FileText, LogOut, UserPlus, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CreditDisplay } from "@/components/credits/CreditDisplay";
 import { UpgradePlanModal } from "@/components/credits/UpgradePlanModal";
 import { PlanType } from "@/lib/credit-types";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";

@@ -8,7 +8,7 @@ import nodemailer from "nodemailer";
 export async function POST(req: Request) {
   try {
     const { uid } = await verifyUser();
-    const { to, subject, body, leadId } = await req.json();
+    const { leadId, to, subject, body, inReplyTo, references } = await req.json();
 
     if (!to || !subject || !body) {
       return NextResponse.json(
@@ -20,19 +20,41 @@ export async function POST(req: Request) {
     // Check and consume credits (1 credit + SMTP daily limit)
     await checkAndConsumeOperation(uid, "smtpSend");
 
-    // Get user's SMTP config
+    // Get user's workspace
     const userDoc = await adminDB.collection("users").doc(uid).get();
     const userData = userDoc.data();
+    const workspaceId = userData?.currentWorkspaceId;
 
-    if (!userData?.smtpConfig?.encryptedPassword) {
+    if (!workspaceId) {
+        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
+
+    // Get SMTP config from workspace
+    const smtpDoc = await adminDB
+      .collection("workspaces")
+      .doc(workspaceId)
+      .collection("settings")
+      .doc("smtp")
+      .get();
+
+    if (!smtpDoc.exists) {
       return NextResponse.json(
         { error: "SMTP configuration not found. Please configure SMTP settings." },
         { status: 400 }
       );
     }
 
+    const smtpData = smtpDoc.data();
+
+    if (!smtpData?.encryptedPassword) {
+       return NextResponse.json(
+        { error: "Invalid SMTP configuration. Please re-save your settings." },
+        { status: 400 }
+      );
+    }
+
     // Decrypt SMTP credentials
-    const smtpConfig = decryptSmtpConfig(userData.smtpConfig);
+    const smtpConfig = decryptSmtpConfig(smtpData as any);
 
     // Create nodemailer transporter
     const transporter = nodemailer.createTransport({
@@ -45,12 +67,29 @@ export async function POST(req: Request) {
       },
     });
 
-    // Send email
+    // 5. Send Email
+    let appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    console.log(`[POST /api/sendEmail] Raw APP_URL: ${appUrl}`);
+
+    // Force ngrok if localhost is detected (debugging fix)
+    if (!appUrl || appUrl.includes('localhost')) {
+        console.warn('[POST /api/sendEmail] Localhost detected, forcing ngrok URL');
+        appUrl = 'https://nonexclusive-kirby-purgatively.ngrok-free.dev';
+    }
+
+    const trackingUrl = `${appUrl}/api/track/pixel.gif?id=${leadId}&ws=${workspaceId}&t=${Date.now()}`;
+    const trackingPixel = `<img src="${trackingUrl}" alt="" width="1" height="1" border="0" />`;
+    
+    console.log(`[POST /api/sendEmail] Injecting tracking pixel: ${trackingPixel}`);
+    
     const info = await transporter.sendMail({
-      from: smtpConfig.user,
-      to,
-      subject,
-      html: body,
+      from: `"${userData?.displayName || 'PitchGenie User'}" <${smtpData.username}>`,
+      to: to,
+      subject: subject,
+      text: body, // Plain text version
+      html: body.replace(/\n/g, '<br>') + trackingPixel, // HTML version with pixel
+      inReplyTo: inReplyTo,
+      references: references,
     });
 
     // Log email sent

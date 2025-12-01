@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyUser } from "@/lib/verify-user";
-import { checkAndConsumeOperation } from "@/lib/server/checkAndConsumeOperation";
-import { generateSequenceWithGroq } from "@/lib/groq/client";
+import { checkAndConsumeOperation, checkOperationLimits } from "@/lib/server/checkAndConsumeOperation";
+import { generateSequenceWithOpenAI } from "@/lib/openai/client";
 import { getUserPlan } from "@/lib/server/getUserPlan";
 import { adminDB } from "@/lib/firebase-admin";
 
@@ -45,16 +45,19 @@ export async function POST(req: Request) {
       leadData = leadDoc.data();
     }
 
-    // Check and consume credits (3 credits for sequence)
-    await checkAndConsumeOperation(uid, "emailSequence");
+    // 1. Check limits BEFORE generation (Read-only)
+    await checkOperationLimits(uid, "emailSequence");
 
-    // Generate sequence using Groq
-    const result = await generateSequenceWithGroq({
+    // 2. Generate sequence using OpenAI
+    const result = await generateSequenceWithOpenAI({
       userProfile,
       lead: leadData,
       companySummary: leadData?.aiSummary || null,
       persona: userProfile?.persona || "Founder",
     });
+
+    // 3. Charge credits AFTER successful generation
+    await checkAndConsumeOperation(uid, "emailSequence");
 
     // Save sequence to lead document if leadId provided
     if (leadId) {

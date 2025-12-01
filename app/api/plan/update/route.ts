@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminAuth } from "@/lib/firebase-admin";
-import { updateWorkspacePlan } from "@/lib/credits";
+import { adminAuth, adminDB } from "@/lib/firebase-admin";
 import { PlanId } from "@/types/billing";
 
 export async function POST(req: Request) {
@@ -48,13 +47,14 @@ export async function POST(req: Request) {
     }
 
     // Update the plan
-    const result = await updateWorkspacePlan(uid, plan);
-
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error || "Failed to update plan" },
-        { status: 500 }
-      );
+    try {
+        await adminDB.collection("workspaces").doc(uid).update({
+            planId: plan,
+            updatedAt: Date.now(),
+        });
+    } catch (err: unknown) {
+        console.error("Plan update failed:", err);
+        return NextResponse.json({ error: "Failed to update plan" }, { status: 500 });
     }
 
     return NextResponse.json({

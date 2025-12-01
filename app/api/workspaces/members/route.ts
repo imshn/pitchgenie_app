@@ -27,9 +27,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
+    const members = (workspaceData?.members || []).map((m: any) => ({
+      ...m,
+      joinedAt: m.joinedAt?.toDate ? m.joinedAt.toDate().toISOString() : m.joinedAt,
+    }));
+
+    const invited = (workspaceData?.invited || []).map((i: any) => {
+        if (typeof i === 'string') {
+            return { email: i, invitedAt: null };
+        }
+        return {
+            ...i,
+            invitedAt: i.invitedAt?.toDate ? i.invitedAt.toDate().toISOString() : i.invitedAt,
+        };
+    });
+
     return NextResponse.json({ 
-      members: workspaceData?.members || [],
-      invited: workspaceData?.invited || []
+      members,
+      invited
     });
 
   } catch (error: any) {

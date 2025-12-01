@@ -128,6 +128,7 @@ export async function getUserPlan(
           updatedAt: Timestamp.now()
         },
         profile: null,
+        membersCount: 1,
         remaining: {
           credits: freePlanData.creditLimit,
           lightScrapes: freePlanData.scraperLightLimit,
@@ -135,6 +136,7 @@ export async function getUserPlan(
           sequences: freePlanData.sequenceLimit,
           templates: freePlanData.templateLimit,
           smtpDailyRemaining: freePlanData.smtpDailyLimit,
+          members: Math.max(0, freePlanData.memberLimit - 1),
         },
         canScrapeDeep: false
       };
@@ -283,6 +285,16 @@ export async function getUserPlan(
     // Get SMTP daily usage for today (Workspace or User level)
     const smtpDailyUsed = await getSmtpDailyUsage(userId, today, workspaceId);
 
+    // Calculate member count
+    let membersCount = 1; // Default to 1 (self)
+    if (workspaceId) {
+        const workspaceDoc = await adminDB.collection("workspaces").doc(workspaceId).get();
+        if (workspaceDoc.exists) {
+            const data = workspaceDoc.data();
+            membersCount = data?.members?.length || 1;
+        }
+    }
+
     // Calculate remaining limits
     const remaining = {
       credits: Math.max(0, planData.creditLimit - usage.creditsUsed),
@@ -291,6 +303,7 @@ export async function getUserPlan(
       sequences: Math.max(0, planData.sequenceLimit - usage.sequencesUsed),
       templates: Math.max(0, planData.templateLimit - usage.templatesUsed),
       smtpDailyRemaining: Math.max(0, planData.smtpDailyLimit - smtpDailyUsed),
+      members: Math.max(0, planData.memberLimit - membersCount),
     };
 
     return {
@@ -302,6 +315,7 @@ export async function getUserPlan(
       planData,
       usage,
       profile,
+      membersCount,
       remaining,
       canScrapeDeep: planData.deepScraperEnabled
     };

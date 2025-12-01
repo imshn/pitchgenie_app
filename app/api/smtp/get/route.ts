@@ -28,13 +28,38 @@ export async function GET(req: Request) {
     }
 
     const data = smtpDoc.data();
-    // Don't return the password for security, or return a masked version if needed
-    // For the form to work, we might need it, or we handle it carefully. 
-    // Usually we send back empty password and only update if user provides new one.
-    // For now, sending it back as the user requested "save config" to work and likely expects to see it.
-    // In a real prod env, we'd mask it.
     
-    return NextResponse.json({ smtpConfig: data });
+    // Decrypt if encrypted
+    let decryptedConfig: any = data;
+    if (data?.encryptedPassword) {
+        const { decryptSmtpConfig, decrypt } = await import("@/lib/encryption");
+        try {
+            const decrypted = decryptSmtpConfig({
+                host: data.host,
+                port: data.port,
+                user: data.user,
+                encryptedPassword: data.encryptedPassword
+            });
+            
+            decryptedConfig = {
+                ...data,
+                ...decrypted,
+                username: decrypted.user, // Map back to username for frontend
+                password: decrypted.password
+            };
+
+            // Decrypt IMAP password if present
+            if (data.encryptedImapPassword) {
+                decryptedConfig.imapPassword = decrypt(data.encryptedImapPassword);
+            }
+        } catch (err) {
+            console.error("Failed to decrypt SMTP config:", err);
+            // Fallback to empty password if decryption fails
+            decryptedConfig = { ...data, password: "" };
+        }
+    }
+
+    return NextResponse.json({ smtpConfig: decryptedConfig });
   } catch (error) {
     console.error("SMTP GET ERROR:", error);
     return NextResponse.json({ error: "Failed to fetch SMTP config" }, { status: 500 });

@@ -6,7 +6,10 @@ export type AnalyticsEventType =
   | "email_sent"
   | "sequence_generated"
   | "scraper_run"
-  | "credits_used";
+  | "credits_used"
+  | "deliverability_check"
+  | "email_opened"
+  | "email_replied";
 
 export async function logAnalyticsEvent(
   workspaceId: string,
@@ -52,6 +55,9 @@ export async function logAnalyticsEvent(
   if (type === "email_sent") updates.emails_sent_total = increment;
   if (type === "sequence_generated") updates.sequences_generated_total = increment;
   if (type === "scraper_run") updates.scrapes_total = increment;
+  if (type === "deliverability_check") updates.deliverability_checks_total = increment;
+  if (type === "email_opened") updates.emails_opened_total = increment;
+  if (type === "email_replied") updates.emails_replied_total = increment;
 
   batch.set(summaryRef, updates, { merge: true });
 

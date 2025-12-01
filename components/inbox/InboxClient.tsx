@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import AuthGuard from "@/components/AuthGuard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PlanLimitAlert } from "@/components/billing/PlanLimitAlert";
 
 export function InboxClient() {
     const { user } = useAuth();
@@ -75,6 +76,10 @@ export function InboxClient() {
         return true;
     });
 
+
+
+    // ...
+
     return (
         <AuthGuard>
             <div className="flex h-full flex-col bg-background">
@@ -87,6 +92,7 @@ export function InboxClient() {
                 <div className="flex flex-1 overflow-hidden">
                     {/* Sidebar */}
                     <div className="w-64 border-r bg-muted/5 p-4 flex flex-col gap-2">
+                        {/* ... */}
                         <Button
                             variant={activeTab === "inbox" ? "secondary" : "ghost"}
                             className={`justify-start h-10 ${activeTab === "inbox" ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground"}`}
@@ -115,6 +121,7 @@ export function InboxClient() {
 
                     {/* Thread List */}
                     <div className="flex-1 flex flex-col min-w-0 bg-background">
+                        <PlanLimitAlert limitType="smtp" className="m-4 mb-0" />
                         <div className="p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10">
                             <div className="relative max-w-2xl">
                                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />

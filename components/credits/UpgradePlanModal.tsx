@@ -1,12 +1,13 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { Dialog, Transition } from "@headlessui/react";
-import { X, Check, Zap, TrendingUp, Users, Infinity as InfinityIcon } from "lucide-react";
+import { X, Check, Zap, Infinity as InfinityIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PLAN_CONFIGS, PlanType } from "@/lib/credit-types";
+import { PlanType } from "@/lib/credit-types";
+import { PlanDocument } from "@/lib/types/plans";
 import { auth } from "@/lib/firebase";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -18,53 +19,46 @@ interface UpgradePlanModalProps {
     currentPlan: PlanType;
 }
 
-const planFeatures = {
-    free: [
-        "50 credits per month",
-        "1 credit per email",
-        "3 scrapers per month",
-        "Basic support",
-    ],
-    starter: [
-        "600 credits per month",
-        "Unlimited scrapers",
-        "Priority email support",
-        "Custom templates",
-    ],
-    pro: [
-        "1,500 credits per month",
-        "Unlimited scrapers",
-        "Priority support",
-        "Advanced analytics",
-        "Custom templates",
-    ],
-    agency: [
-        "Unlimited credits",
-        "Unlimited everything",
-        "Dedicated support",
-        "White-label options",
-        "API access",
-    ],
-};
-
 export function UpgradePlanModal({ open, onClose, currentPlan }: UpgradePlanModalProps) {
     const [loading, setLoading] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<PlanType | null>(null);
+    const [plans, setPlans] = useState<PlanDocument[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(true);
 
     const { Razorpay } = useRazorpay();
 
-    const handleUpgrade = async (plan: PlanType) => {
-        if (plan === currentPlan) {
+    useEffect(() => {
+        const fetchPlans = async () => {
+            try {
+                const res = await axios.get("/api/plansV2");
+                if (res.data.plans) {
+                    setPlans(res.data.plans);
+                }
+            } catch (error) {
+                console.error("Failed to fetch plans", error);
+                toast.error("Failed to load plan details");
+            } finally {
+                setLoadingPlans(false);
+            }
+        };
+
+        if (open) {
+            fetchPlans();
+        }
+    }, [open]);
+
+    const handleUpgrade = async (planId: PlanType) => {
+        if (planId === currentPlan) {
             toast.error("You're already on this plan");
             return;
         }
 
-        if (plan === "free") {
+        if (planId === "free") {
             toast.error("Cannot downgrade to free plan from here");
             return;
         }
 
-        setSelectedPlan(plan);
+        setSelectedPlan(planId);
         setLoading(true);
 
         try {
@@ -79,20 +73,21 @@ export function UpgradePlanModal({ open, onClose, currentPlan }: UpgradePlanModa
             // Create subscription via API
             const res = await axios.post(
                 "/api/billing/create-subscription",
-                { plan },
+                { plan: planId },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             const { subscriptionId } = res.data;
 
             if (subscriptionId) {
+                const planDetails = plans.find(p => p.id === planId);
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                     subscription_id: subscriptionId,
                     name: "PitchGenie",
-                    description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan Subscription`,
+                    description: `${planDetails?.name || planId} Plan Subscription`,
                     handler: async (response: any) => {
-                        toast.success(`Upgraded to ${PLAN_CONFIGS[plan].name} plan!`);
+                        toast.success(`Upgraded to ${planDetails?.name || planId} plan!`);
                         onClose();
                     },
                     prefill: {
@@ -103,7 +98,7 @@ export function UpgradePlanModal({ open, onClose, currentPlan }: UpgradePlanModa
                         color: "#0F172A",
                         backdrop_color: "rgba(0,0,0,0.85)"
                     },
-                    image: "https://pitchgenie.ai/logo.png", // Assuming a logo URL or use a placeholder
+                    image: "https://pitchgenie.ai/logo.png",
                     modal: {
                         ondismiss: function () {
                             setLoading(false);
@@ -179,72 +174,78 @@ export function UpgradePlanModal({ open, onClose, currentPlan }: UpgradePlanModa
                                 </div>
 
                                 {/* Plans Grid */}
-                                <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    {(Object.keys(PLAN_CONFIGS) as PlanType[]).map((plan) => {
-                                        const config = PLAN_CONFIGS[plan];
-                                        const features = planFeatures[plan];
-                                        const isCurrent = plan === currentPlan;
-                                        const isPopular = plan === "pro";
+                                <div className="p-6">
+                                    {loadingPlans ? (
+                                        <div className="flex justify-center py-12">
+                                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            {plans.map((plan) => {
+                                                const isCurrent = plan.id === currentPlan;
+                                                const isPopular = plan.badge === "Best value" || plan.badge === "Popular";
 
-                                        return (
-                                            <Card
-                                                key={plan}
-                                                className={`relative ${isPopular ? "border-primary shadow-lg" : ""
-                                                    } ${isCurrent ? "bg-secondary/20" : ""}`}
-                                            >
-                                                {isPopular && (
-                                                    <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-primary">
-                                                        Popular
-                                                    </Badge>
-                                                )}
-                                                <CardHeader>
-                                                    <div className="flex items-center justify-between">
-                                                        <CardTitle className="text-xl capitalize">{config.name}</CardTitle>
-                                                        {isCurrent && (
-                                                            <Badge variant="secondary">Current</Badge>
+                                                return (
+                                                    <Card
+                                                        key={plan.id}
+                                                        className={`relative flex flex-col ${isPopular ? "border-primary shadow-lg" : ""
+                                                            } ${isCurrent ? "bg-secondary/20" : ""}`}
+                                                    >
+                                                        {isPopular && (
+                                                            <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-primary">
+                                                                {plan.badge || "Popular"}
+                                                            </Badge>
                                                         )}
-                                                    </div>
-                                                    <CardDescription className="text-3xl font-bold mt-2">
-                                                        ₹{config.price.toLocaleString()}
-                                                        <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                                                    </CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="space-y-4">
-                                                    <div className="flex items-center gap-2 text-sm font-semibold">
-                                                        {plan === "agency" ? (
-                                                            <><InfinityIcon className="h-4 w-4 text-primary" /> Unlimited</>
-                                                        ) : (
-                                                            <><Zap className="h-4 w-4 text-primary" /> {config.monthlyCredits} credits/mo</>
-                                                        )}
-                                                    </div>
-                                                    <ul className="space-y-2">
-                                                        {features.map((feature, i) => (
-                                                            <li key={i} className="flex items-start gap-2 text-sm">
-                                                                <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                                                                <span>{feature}</span>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                    {plan !== "free" && (
-                                                        <Button
-                                                            onClick={() => handleUpgrade(plan)}
-                                                            disabled={isCurrent || loading}
-                                                            className="w-full mt-4"
-                                                            variant={isPopular ? "default" : "outline"}
-                                                        >
-                                                            {loading && selectedPlan === plan ? (
-                                                                "Processing..."
-                                                            ) : isCurrent ? (
-                                                                "Current Plan"
-                                                            ) : (
-                                                                "Upgrade Now"
+                                                        <CardHeader>
+                                                            <div className="flex items-center justify-between">
+                                                                <CardTitle className="text-xl capitalize">{plan.name}</CardTitle>
+                                                                {isCurrent && (
+                                                                    <Badge variant="secondary">Current</Badge>
+                                                                )}
+                                                            </div>
+                                                            <CardDescription className="text-3xl font-bold mt-2">
+                                                                ₹{plan.priceMonthly.toLocaleString()}
+                                                                <span className="text-sm font-normal text-muted-foreground">/mo</span>
+                                                            </CardDescription>
+                                                        </CardHeader>
+                                                        <CardContent className="space-y-4 flex-1 flex flex-col">
+                                                            <div className="flex items-center gap-2 text-sm font-semibold">
+                                                                {plan.id === "agency" ? (
+                                                                    <><InfinityIcon className="h-4 w-4 text-primary" /> Unlimited credits</>
+                                                                ) : (
+                                                                    <><Zap className="h-4 w-4 text-primary" /> {plan.creditLimit} credits/mo</>
+                                                                )}
+                                                            </div>
+                                                            <ul className="space-y-2 flex-1">
+                                                                {plan.features.map((feature, i) => (
+                                                                    <li key={i} className="flex items-start gap-2 text-sm">
+                                                                        <Check className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                                                                        <span>{feature}</span>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                            {plan.id !== "free" && (
+                                                                <Button
+                                                                    onClick={() => handleUpgrade(plan.id)}
+                                                                    disabled={isCurrent || loading}
+                                                                    className="w-full mt-4"
+                                                                    variant={isPopular ? "default" : "outline"}
+                                                                >
+                                                                    {loading && selectedPlan === plan.id ? (
+                                                                        "Processing..."
+                                                                    ) : isCurrent ? (
+                                                                        "Current Plan"
+                                                                    ) : (
+                                                                        "Upgrade Now"
+                                                                    )}
+                                                                </Button>
                                                             )}
-                                                        </Button>
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-                                        );
-                                    })}
+                                                        </CardContent>
+                                                    </Card>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Footer Note */}

@@ -32,7 +32,7 @@ export function PricingCard({
   return (
     <MagicCard
       className={cn(
-        "relative p-6 transition-all hover:shadow-xl",
+        "relative p-6 transition-all hover:shadow-xl bg-card text-card-foreground",
         isCurrent && "ring-2 ring-primary"
       )}
       gradientColor={isCurrent ? "#3b82f6" : undefined}

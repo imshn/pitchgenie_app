@@ -22,7 +22,8 @@ type Feature =
   | "templates"
   | "members"
   | "credits"
-  | "tone";
+  | "tone"
+  | "smtp";
 
 export function usePlanLimit(): {
   checkLimit: (feature: Feature, showToast?: boolean) => boolean;
@@ -90,13 +91,10 @@ export function usePlanLimit(): {
         currentValue = planData.usage.templatesUsed;
         break;
       case "members":
-        isLimitReached = (planData.planData.memberLimit - (planData.planData.memberLimit - 0)) >= planData.planData.memberLimit; // Logic needs to be correct. 
-        // Actually planData doesn't have "remaining members" explicitly calculated in the interface shown in usePlanData.tsx
-        // but let's assume we don't check members often here.
-        // Let's skip member check for now or use a safe default.
+        isLimitReached = planData.remaining.members <= 0;
         limitName = "Member";
         limitValue = planData.planData.memberLimit;
-        currentValue = 0; // Placeholder
+        currentValue = planData.membersCount;
         break;
       case "credits":
         isLimitReached = planData.remaining.credits <= 0;
@@ -110,6 +108,12 @@ export function usePlanLimit(): {
         limitName = "Tone";
         limitValue = planData.planData.aiToneModes;
         currentValue = 0;
+        break;
+      case "smtp":
+        isLimitReached = planData.remaining.smtpDailyRemaining <= 0;
+        limitName = "Daily Email";
+        limitValue = planData.planData.smtpDailyLimit;
+        currentValue = planData.usage.smtpEmailsSent;
         break;
     }
 

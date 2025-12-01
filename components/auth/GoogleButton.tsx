@@ -6,16 +6,20 @@ import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { FcGoogle } from "react-icons/fc";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 
 export default function GoogleButton(props: { text: string; }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleGoogleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
+
+      // Get plan from URL if present
+      const requestedPlan = searchParams.get("plan");
 
       // Call Bootstrap API
       const token = await result.user.getIdToken();
@@ -27,7 +31,8 @@ export default function GoogleButton(props: { text: string; }) {
         },
         body: JSON.stringify({
           fullName: result.user.displayName,
-          email: result.user.email
+          email: result.user.email,
+          requestedPlan
         })
       });
 

@@ -15,6 +15,7 @@ import {
   arrayUnion,
   arrayRemove,
   documentId,
+  onSnapshot,
 } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -25,7 +26,7 @@ import SequenceDrawer from "./SequenceDrawer";
 import AddLeadDialog from "./AddLeadDialog";
 import ReplyAnalyzerDrawer from "./ReplyAnalyzerDrawer";
 import ReplyInputDialog from "./ReplyInputDialog";
-import { Loader2, MoreHorizontal, Mail, Linkedin, Repeat, LayoutGrid, Table as TableIcon, Search, Filter, Plus, X, FileText, Download, MessageSquare, ChevronDown, FileSpreadsheet, StickyNote } from "lucide-react";
+import { Loader2, MoreHorizontal, Mail, Linkedin, Repeat, LayoutGrid, Table as TableIcon, Search, Filter, Plus, X, FileText, Download, MessageSquare, ChevronDown, FileSpreadsheet, StickyNote, Eye } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -71,43 +72,58 @@ export default function LeadTable() {
   const [showReplyInput, setShowReplyInput] = useState(false);
 
   // -----------------------------------------
-  // FETCH LEADS
+  // REAL-TIME LEADS SUBSCRIPTION
   // -----------------------------------------
-  const fetchLeads = async (uid?: string) => {
-    if (!uid) return;
-
-    try {
-      // 1. Get current workspace ID
-      const userDoc = await getDocs(query(collection(db, "users"), where(documentId(), "==", uid)));
-      if (userDoc.empty) return;
-
-      const userData = userDoc.docs[0].data();
-      const currentWorkspaceId = userData.currentWorkspaceId;
-
-      if (!currentWorkspaceId) {
-        console.warn("No workspace ID found for user");
-        return;
-      }
-
-      setWorkspaceId(currentWorkspaceId);
-
-      // 2. Query workspace leads
-      const q = query(collection(db, "workspaces", currentWorkspaceId, "leads"));
-      const snap = await getDocs(q);
-
-      setLeads(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (error) {
-      console.error("Error fetching leads:", error);
-      toast.error("Failed to load leads");
-    }
-  };
-
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (!u) return;
-      await fetchLeads(u.uid);
+    let unsubscribe: () => void;
+
+    const setupSubscription = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      try {
+        // 1. Get current workspace ID
+        const userDoc = await getDocs(query(collection(db, "users"), where(documentId(), "==", user.uid)));
+        if (userDoc.empty) return;
+
+        const userData = userDoc.docs[0].data();
+        const currentWorkspaceId = userData.currentWorkspaceId;
+
+        if (!currentWorkspaceId) {
+          console.warn("No workspace ID found for user");
+          return;
+        }
+
+        setWorkspaceId(currentWorkspaceId);
+
+        // 2. Subscribe to workspace leads
+        const q = query(collection(db, "workspaces", currentWorkspaceId, "leads"));
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const leadsData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setLeads(leadsData);
+        }, (error) => {
+          console.error("Error subscribing to leads:", error);
+          toast.error("Failed to load leads updates");
+        });
+
+      } catch (error) {
+        console.error("Error setting up subscription:", error);
+      }
+    };
+
+    const authUnsub = auth.onAuthStateChanged((u) => {
+      if (u) {
+        setupSubscription();
+      } else {
+        setLeads([]);
+        setWorkspaceId(null);
+      }
     });
-    return () => unsub();
+
+    return () => {
+      authUnsub();
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   // -----------------------------------------
@@ -128,6 +144,7 @@ export default function LeadTable() {
   // -----------------------------------------
   const statusMap: any = {
     new: { label: "New", variant: "secondary" },
+    opened: { label: "Opened", variant: "outline", className: "border-blue-500 text-blue-500" },
     contacted: { label: "Contacted", variant: "default" },
     replied: { label: "Replied", variant: "success" },
     hot: { label: "Hot", variant: "destructive" },
@@ -284,7 +301,18 @@ export default function LeadTable() {
         }
       });
 
-      await updateStatus(lead.id, "contacted"); // AUTO-SET STATUS
+      // Update local state immediately
+      setLeads(leads.map(l => l.id === lead.id ? {
+        ...l,
+        status: "contacted",
+        lastGeneratedEmail: {
+          subject: res.data.subject,
+          body: res.data.body,
+          followUp: res.data.followUp,
+          generatedAt: new Date().toISOString()
+        }
+      } : l));
+
       refreshPlan(); // Refresh plan data
 
       setPreviewEmail({
@@ -323,6 +351,16 @@ export default function LeadTable() {
         }
       });
 
+      // Update local state
+      setLeads(leads.map(l => l.id === lead.id ? {
+        ...l,
+        linkedinMessage: {
+          connectMessage: res.data.connectMessage,
+          followUp: res.data.followUp,
+          generatedAt: new Date().toISOString()
+        }
+      } : l));
+
       setPreviewLinkedIn({
         connect: res.data.connectMessage,
         followup: res.data.followUp,
@@ -357,6 +395,15 @@ export default function LeadTable() {
           aiSummary: lead.aiSummary,
         }
       });
+
+      // Update local state
+      setLeads(leads.map(l => l.id === lead.id ? {
+        ...l,
+        sequence: {
+          emails: res.data.sequence,
+          generatedAt: new Date().toISOString()
+        }
+      } : l));
 
       setPreviewSequence(res.data);
       refreshPlan(); // Refresh plan data
@@ -490,7 +537,7 @@ export default function LeadTable() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <AddLeadDialog onLeadAdded={() => fetchLeads(auth.currentUser?.uid)} />
+          <AddLeadDialog onLeadAdded={() => { }} />
 
           <div className="flex items-center bg-secondary/50 rounded-lg p-1 border border-border ml-2">
             <Button
@@ -653,24 +700,24 @@ export default function LeadTable() {
 
                           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Preview & Edit</DropdownMenuLabel>
                           <DropdownMenuItem
-                            disabled={!lead.subject && !lead.generatedEmail?.subject}
+                            disabled={!lead.subject && !lead.lastGeneratedEmail?.subject}
                             onClick={() => setPreviewEmail({
                               type: "email",
                               leadId: lead.id,
                               lead: lead,
-                              subject: lead.subject || lead.generatedEmail?.subject,
-                              body: lead.body || lead.generatedEmail?.body,
-                              followUp: lead.followUp || lead.generatedEmail?.followUp,
+                              subject: lead.subject || lead.lastGeneratedEmail?.subject,
+                              body: lead.body || lead.lastGeneratedEmail?.body,
+                              followUp: lead.followUp || lead.lastGeneratedEmail?.followUp,
                             })}
                           >
                             <Mail className="mr-2 h-4 w-4" />
                             Preview Email
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            disabled={!lead.linkedinConnect}
+                            disabled={!lead.linkedinMessage?.connectMessage}
                             onClick={() => setPreviewLinkedIn({
-                              connect: lead.linkedinConnect,
-                              followup: lead.linkedinFollowup,
+                              connect: lead.linkedinMessage?.connectMessage,
+                              followup: lead.linkedinMessage?.followUp,
                               leadId: lead.id,
                             })}
                           >

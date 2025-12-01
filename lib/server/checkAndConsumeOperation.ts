@@ -13,6 +13,65 @@ import { ensureBillingCycle } from "./billingCycle";
  * @returns Success object with updated plan data
  * @throws Error with OperationErrorCode if operation not allowed
  */
+export async function checkOperationLimits(
+  userId: string,
+  operation: CreditOperation
+): Promise<void> {
+  // Ensure valid billing cycle and get current cycle ID
+  const cycleId = await ensureBillingCycle(userId);
+  const creditCost = CREDIT_COSTS[operation];
+
+  // Fetch current plan and usage
+  const planData = await getUserPlan(userId, cycleId);
+
+  // Check credit balance
+  if (planData.remaining.credits < creditCost) {
+    throw new Error(OperationErrorCode.INSUFFICIENT_CREDITS);
+  }
+
+  // Operation-specific limit checks
+  switch (operation) {
+    case "lightScrape":
+      if (planData.remaining.lightScrapes <= 0) {
+        throw new Error(OperationErrorCode.SCRAPER_LIMIT_REACHED);
+      }
+      break;
+
+    case "deepScrape":
+      if (!planData.canScrapeDeep) {
+        throw new Error(OperationErrorCode.DEEP_SCRAPER_NOT_ALLOWED);
+      }
+      if (planData.remaining.deepScrapes <= 0) {
+        throw new Error(OperationErrorCode.SCRAPER_LIMIT_REACHED);
+      }
+      break;
+
+    case "emailSequence":
+      if (planData.remaining.sequences <= 0) {
+        throw new Error(OperationErrorCode.SEQUENCE_LIMIT);
+      }
+      break;
+
+    case "templateSave":
+      if (planData.remaining.templates <= 0) {
+        throw new Error(OperationErrorCode.TEMPLATE_LIMIT);
+      }
+      break;
+
+    case "smtpSend":
+      if (planData.remaining.smtpDailyRemaining <= 0) {
+        throw new Error(OperationErrorCode.SMTP_DAILY_LIMIT);
+      }
+      break;
+
+    case "imapSync":
+      if (planData.planData.imapSyncIntervalSeconds === null) {
+        throw new Error(OperationErrorCode.IMAP_NOT_ALLOWED);
+      }
+      break;
+  }
+}
+
 export async function checkAndConsumeOperation(
   userId: string,
   operation: CreditOperation,
@@ -169,6 +228,7 @@ export async function checkAndConsumeOperation(
             if (operation === "emailSequence") eventType = "sequence_generated";
             if (operation === "lightScrape" || operation === "deepScrape") eventType = "scraper_run";
             if (operation === "smtpSend") eventType = "email_sent";
+            if (operation === "deliverabilityCheck") eventType = "deliverability_check";
             
             if (eventType) {
                 logAnalyticsEvent(workspaceId, eventType, creditCost, details || {});

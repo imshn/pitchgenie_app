@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
-import { getUserPlan } from "@/lib/plan-utils";
+import { getUserPlan } from "@/lib/server/getUserPlan";
 
 export const dynamic = 'force-dynamic';
 

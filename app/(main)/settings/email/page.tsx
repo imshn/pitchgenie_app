@@ -15,6 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePlanLimit } from "@/hooks/usePlanLimit";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { UpgradePlanModal } from "@/components/credits/UpgradePlanModal";
+import { PlanType } from "@/lib/credit-types";
 
 type Provider = "gmail" | "outlook" | "yahoo" | "zoho" | "icloud" | "custom";
 
@@ -34,6 +36,7 @@ export default function EmailSettingsPage() {
     const [saving, setSaving] = useState(false);
     const [testingSmtp, setTestingSmtp] = useState(false);
     const [testingImap, setTestingImap] = useState(false);
+    const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
     const [provider, setProvider] = useState<Provider>("custom");
 
     const [config, setConfig] = useState({
@@ -57,7 +60,7 @@ export default function EmailSettingsPage() {
     const [imapError, setImapError] = useState("");
 
     // Plan Enforcement
-    const isImapAllowed = plan?.planId !== "free";
+    const isImapAllowed = plan?.planType ? plan.planType !== "free" : false;
 
     useEffect(() => {
         if (!user) return;
@@ -146,7 +149,12 @@ export default function EmailSettingsPage() {
         setSmtpError("");
         try {
             const token = await user?.getIdToken();
-            await axios.post("/api/smtp/test", { smtpConfig: config }, { headers: { Authorization: `Bearer ${token}` } });
+            await axios.post("/api/smtp/test", {
+                host: config.host,
+                port: config.port,
+                user: config.username,
+                password: config.password
+            }, { headers: { Authorization: `Bearer ${token}` } });
             setSmtpStatus("connected");
             toast.success("SMTP Connection Successful");
         } catch (error: any) {
@@ -163,7 +171,12 @@ export default function EmailSettingsPage() {
         setImapError("");
         try {
             const token = await user?.getIdToken();
-            await axios.post("/api/imap/test", { imapConfig: config }, { headers: { Authorization: `Bearer ${token}` } });
+            await axios.post("/api/imap/test", {
+                host: config.imapHost,
+                port: config.imapPort,
+                user: config.imapUsername,
+                password: config.imapPassword
+            }, { headers: { Authorization: `Bearer ${token}` } });
             setImapStatus("connected");
             toast.success("IMAP Connection Successful");
         } catch (error: any) {
@@ -264,9 +277,14 @@ export default function EmailSettingsPage() {
                                 <Shield className="w-12 h-12 text-muted-foreground mb-4" />
                                 <h3 className="text-lg font-semibold">Inbox Sync is a Premium Feature</h3>
                                 <p className="text-muted-foreground max-w-sm mb-4">Upgrade to Starter or Pro to sync replies and manage your inbox directly.</p>
-                                <Button onClick={() => window.location.href = '/billing'}>Upgrade Plan</Button>
+                                <Button onClick={() => setUpgradeModalOpen(true)}>Upgrade Plan</Button>
                             </div>
                         )}
+                        <UpgradePlanModal
+                            open={upgradeModalOpen}
+                            onClose={() => setUpgradeModalOpen(false)}
+                            currentPlan={(plan?.planType as PlanType) || "free"}
+                        />
                         <SettingsSectionCard title="Receiving Settings (IMAP)" description="Configure how PitchGenie reads replies." icon={Inbox}>
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">

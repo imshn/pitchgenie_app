@@ -29,7 +29,7 @@ import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 
 import { auth, db } from "@/lib/firebase";
 import axios from "axios";
 import { UAParser } from "ua-parser-js";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, orderBy } from "firebase/firestore";
 
 interface ActiveSession {
     id: string;
@@ -55,32 +55,42 @@ export default function SecurityPage() {
     const [mfaStep, setMfaStep] = useState<"send" | "verify">("send");
     const [mfaLoading, setMfaLoading] = useState(false);
 
-    // We can only reliably detect the current session on the client
-    const [currentSession, setCurrentSession] = useState<ActiveSession | null>(null);
+    // Active Sessions State
+    const [sessions, setSessions] = useState<any[]>([]);
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
     useEffect(() => {
-        // Detect current device info
-        const parser = new UAParser();
-        const result = parser.getResult();
+        if (!user) return;
 
-        setCurrentSession({
-            id: "current",
-            device: `${result.os.name || "Unknown OS"} ${result.os.version || ""}`,
-            browser: `${result.browser.name || "Unknown Browser"}`,
-            location: "Unknown Location",
-            lastActive: "Active now",
-            current: true,
+        // 1. Record current session & get ID
+        const recordSession = async () => {
+            try {
+                const token = await user.getIdToken();
+                const res = await axios.post("/api/auth/session", {}, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setCurrentSessionId(res.data.sessionId);
+            } catch (err) {
+                console.error("Failed to record session", err);
+            }
+        };
+        recordSession();
+
+        // 2. Listen to sessions
+        const q = query(
+            collection(db, "users", user.uid, "sessions"),
+            orderBy("lastActive", "desc")
+        );
+
+        const unsub = onSnapshot(q, (snapshot: any) => {
+            const sessionsData = snapshot.docs.map((doc: any) => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setSessions(sessionsData);
         });
 
-        // Listen to 2FA status from Firestore
-        if (user) {
-            const unsub = onSnapshot(doc(db, "users", user.uid), (doc) => {
-                if (doc.exists()) {
-                    setTwoFactorEnabled(doc.data().twoFactorEnabled || false);
-                }
-            });
-            return () => unsub();
-        }
+        return () => unsub();
     }, [user]);
 
     const handleChangePassword = async () => {
@@ -210,6 +220,8 @@ export default function SecurityPage() {
         }
     };
 
+    const currentSession = sessions.find(session => session.id === currentSessionId);
+
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div>
@@ -291,30 +303,47 @@ export default function SecurityPage() {
             {/* Active Sessions */}
             <SettingsSectionCard
                 title="Active Sessions"
-                description="Manage devices logged into your account"
+                description={`Manage devices logged into your account (${sessions.length} active)`}
                 icon={Shield}
             >
                 <div className="space-y-3">
-                    {/* Current Session */}
-                    {currentSession && (
-                        <Card className="p-4 border-primary/20 bg-primary/5">
-                            <div className="flex items-start justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-background rounded-full">
-                                        <Laptop className="w-5 h-5 text-primary" />
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <p className="font-medium text-sm">{currentSession.device} • {currentSession.browser}</p>
-                                            <Badge variant="default" className="text-[10px] h-5">Current</Badge>
+                    {sessions.length === 0 ? (
+                        <div className="text-center py-4 text-muted-foreground">
+                            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            Loading sessions...
+                        </div>
+                    ) : (
+                        sessions.map((session) => (
+                            <Card
+                                key={session.id}
+                                className={`p-4 border-primary/20 ${session.id === currentSessionId ? 'bg-primary/5' : 'bg-card'}`}
+                            >
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-background rounded-full">
+                                            {session.deviceType === 'Mobile' ? (
+                                                <Smartphone className="w-5 h-5 text-primary" />
+                                            ) : (
+                                                <Laptop className="w-5 h-5 text-primary" />
+                                            )}
                                         </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            {currentSession.location} • {currentSession.lastActive}
-                                        </p>
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <p className="font-medium text-sm">
+                                                    {session.os} • {session.browser}
+                                                </p>
+                                                {session.id === currentSessionId && (
+                                                    <Badge variant="default" className="text-[10px] h-5">Current</Badge>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                {session.location} • {new Date(session.lastActive).toLocaleString()}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </Card>
+                            </Card>
+                        ))
                     )}
 
                     <div className="pt-2">

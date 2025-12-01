@@ -252,9 +252,9 @@ export default function EmailPreviewDrawer({ open, onClose, previewData, workspa
       <Dialog onClose={onClose} className="fixed inset-0 z-50">
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md" />
 
-        <div className="fixed right-0 top-0 h-full w-[520px] glass border-l border-border overflow-y-auto shadow-premium">
+        <div className="fixed right-0 top-0 h-full w-[520px] bg-background border-l border-border overflow-y-auto shadow-2xl">
           {/* Header */}
-          <div className="sticky top-0 border-b border-border bg-background/80 backdrop-blur-sm px-6 py-4 flex items-center justify-between z-10">
+          <div className="sticky top-0 border-b border-border bg-background px-6 py-4 flex items-center justify-between z-10">
             <h2 className="text-lg font-semibold text-foreground">
               {previewData.type === 'details' ? 'Lead Details' : 'Preview & Edit'}
             </h2>

@@ -3,7 +3,7 @@
 import AuthGuard from "@/components/AuthGuard";
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { doc, deleteDoc } from "firebase/firestore";
+import { doc, deleteDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
 import { FileText, Plus, MoreVertical, Pencil, Trash, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -18,27 +18,35 @@ import TemplateCreateDialog from "@/components/TemplateCreateDialog";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { usePlanLimit } from "@/hooks/usePlanLimit";
+import { PlanLimitAlert } from "@/components/billing/PlanLimitAlert";
 
 export default function TemplatesPage() {
-  const { checkLimit } = usePlanLimit();
+  const { checkLimit, PlanLimitModal } = usePlanLimit();
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<any>(null);
 
   const loadTemplates = async () => {
+    setLoading(true);
     try {
       const user = auth.currentUser;
       if (!user) return;
 
-      const token = await user.getIdToken();
-      const res = await axios.get("/api/getTemplates", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const q = query(
+        collection(db, "users", user.uid, "templates"),
+        orderBy("createdAt", "desc")
+      );
 
-      setTemplates(res.data.templates || []);
+      const snapshot = await getDocs(q);
+      const templatesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      setTemplates(templatesData);
     } catch (error) {
-      console.error("Failed to load templates:", error);
+      console.error("Error loading templates:", error);
       toast.error("Failed to load templates");
     } finally {
       setLoading(false);
@@ -46,14 +54,16 @@ export default function TemplatesPage() {
   };
 
   useEffect(() => {
-    const unsub = auth.onAuthStateChanged(async (u) => {
-      if (u) await loadTemplates();
-      else {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        loadTemplates();
+      } else {
         setTemplates([]);
         setLoading(false);
       }
     });
-    return () => unsub();
+
+    return () => unsubscribe();
   }, []);
 
   const handleDelete = async (templateId: string) => {
@@ -112,6 +122,8 @@ export default function TemplatesPage() {
             New Template
           </Button>
         </PageHeader>
+
+        <PlanLimitAlert limitType="templates" className="mx-6 mt-6" />
 
         <div className="flex-1 p-6 overflow-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -182,6 +194,7 @@ export default function TemplatesPage() {
           onSuccess={handleSuccess}
           editTemplate={editingTemplate}
         />
+        <PlanLimitModal />
       </div>
     </AuthGuard>
   );

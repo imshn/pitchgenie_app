@@ -30,12 +30,12 @@ interface Member {
 
 interface Invite {
     email: string;
-    invitedAt?: number; // If we track this
+    invitedAt?: string | null;
 }
 
 export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
     const [members, setMembers] = useState<Member[]>([]);
-    const [invites, setInvites] = useState<string[]>([]);
+    const [invites, setInvites] = useState<Invite[]>([]);
     const [loading, setLoading] = useState(true);
     const [removing, setRemoving] = useState<string | null>(null);
     const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
@@ -288,7 +288,11 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">
-                                            {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "-"}
+                                            {(() => {
+                                                if (!member.joinedAt) return "-";
+                                                const date = new Date(member.joinedAt);
+                                                return isNaN(date.getTime()) ? "-" : date.toLocaleDateString();
+                                            })()}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {member.role !== "owner" && member.uid !== user?.uid && (
@@ -310,27 +314,29 @@ export function MemberList({ refreshTrigger }: { refreshTrigger: number }) {
                                     </TableRow>
                                 ))}
 
-                                {invites.map((email) => (
-                                    <TableRow key={email}>
+                                {invites.map((invite) => (
+                                    <TableRow key={invite.email}>
                                         <TableCell className="flex items-center gap-3 opacity-70">
                                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
                                                 <Mail className="h-4 w-4 text-muted-foreground" />
                                             </div>
                                             <div className="flex flex-col">
-                                                <span className="font-medium">{email}</span>
+                                                <span className="font-medium">{invite.email}</span>
                                                 <span className="text-xs text-muted-foreground">Invitation Pending</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline">Invited</Badge>
                                         </TableCell>
-                                        <TableCell className="text-muted-foreground">-</TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {invite.invitedAt ? new Date(invite.invitedAt).toLocaleDateString() : "-"}
+                                        </TableCell>
                                         <TableCell className="text-right">
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
                                                 className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                                onClick={() => handleCancelInvite(email)}
+                                                onClick={() => handleCancelInvite(invite.email)}
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>

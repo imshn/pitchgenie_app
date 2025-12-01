@@ -41,46 +41,22 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
     const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
 
-    const { plan } = usePlanLimit();
+    const { plan, checkLimit, PlanLimitModal } = usePlanLimit();
 
-    const memberLimit = plan?.memberLimit ?? 2;
-    const currentMembers = plan?.members?.length || 0;
-    const currentInvited = plan?.invited?.length || 0;
-    const totalMembers = currentMembers + currentInvited;
-    const isLimitReached = totalMembers >= memberLimit;
+    const memberLimit = plan?.planData?.memberLimit ?? 2;
+    const isLimitReached = plan?.remaining?.members <= 0;
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(async () => {
-            if (query.length < 3) {
-                setResults([]);
-                return;
-            }
-
-            setSearching(true);
-            try {
-                const token = await auth.currentUser?.getIdToken();
-                const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
-                    headers: { "Authorization": `Bearer ${token}` }
-                });
-                const data = await res.json();
-                setResults(data.users || []);
-                setShowResults(true);
-            } catch (error) {
-                console.error("Search error:", error);
-            } finally {
-                setSearching(false);
-            }
-        }, 300);
-
-        return () => clearTimeout(timer);
-    }, [query]);
+    // ... (search effect)
 
     const handleInvite = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!checkLimit("members")) return;
+
         setLoading(true);
 
         try {
+            // ... (existing logic)
             const user = auth.currentUser;
             if (!user) throw new Error("Not authenticated");
 
@@ -139,13 +115,16 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
 
                 {/* Member Limit Warning */}
                 {isLimitReached && (
-                    <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-500">
-                        <p className="font-medium">⚠️ Member limit reached</p>
+                    <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-500 mb-4">
+                        <p className="font-medium flex items-center gap-2">
+                            ⚠️ Member limit reached
+                        </p>
                         <p className="text-xs mt-1">
                             You've reached the limit of {memberLimit} members for your plan. Upgrade to add more team members.
                         </p>
                     </div>
                 )}
+
                 <form onSubmit={handleInvite} className="grid gap-4 py-4">
                     <div className="grid gap-2 relative">
                         <Label htmlFor="email">Email address</Label>
@@ -198,19 +177,27 @@ export function InviteMemberModal({ onInviteSuccess }: InviteMemberModalProps) {
                         )}
                     </div>
                     <DialogFooter>
-                        <Button
-                            type="submit"
-                            disabled={loading || isLimitReached}
-                        >
-                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isLimitReached
-                                ? "Upgrade Required"
-                                : "Send Invitation"
-                            }
-                        </Button>
+                        {isLimitReached ? (
+                            <Button
+                                type="button"
+                                onClick={() => checkLimit("members")}
+                                className="w-full"
+                            >
+                                Upgrade to Invite
+                            </Button>
+                        ) : (
+                            <Button
+                                type="submit"
+                                disabled={loading}
+                            >
+                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Send Invitation
+                            </Button>
+                        )}
                     </DialogFooter>
                 </form>
             </DialogContent>
+            <PlanLimitModal />
         </Dialog>
     );
 }

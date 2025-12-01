@@ -13,6 +13,8 @@ import { useAuth } from "@/hooks/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
 
+import { usePlanLimit } from "@/hooks/usePlanLimit";
+
 interface MessageDrawerProps {
     thread: Thread | null;
     open: boolean;
@@ -22,6 +24,7 @@ interface MessageDrawerProps {
 
 export function MessageDrawer({ thread, open, onClose, onReplySuccess }: MessageDrawerProps) {
     const { user } = useAuth();
+    const { checkLimit, PlanLimitModal } = usePlanLimit();
     const [replying, setReplying] = useState(false);
     const [replyBody, setReplyBody] = useState("");
     const [sending, setSending] = useState(false);
@@ -29,7 +32,6 @@ export function MessageDrawer({ thread, open, onClose, onReplySuccess }: Message
 
     useEffect(() => {
         if (open && scrollRef.current) {
-            // Scroll to bottom when opened
             setTimeout(() => {
                 scrollRef.current?.scrollIntoView({ behavior: "smooth" });
             }, 100);
@@ -38,15 +40,20 @@ export function MessageDrawer({ thread, open, onClose, onReplySuccess }: Message
 
     if (!thread) return null;
 
-    const latestMessage = thread.messages[0]; // Newest first
-    const participants = thread.participants.filter(p => p.email !== user?.email); // Exclude self if possible, but user email might not match exactly
-    const recipient = participants[0] || { name: "Unknown", email: "" };
+    const latestMessage = thread.messages[0];
+    // Determine recipient: if latest message is sent by us, recipient is 'to', else 'from'
+    // We assume 'sent' folder means sent by us.
+    const recipient = latestMessage.folder === 'sent' ? latestMessage.to : latestMessage.from;
 
     const handleSendReply = async () => {
         if (!replyBody.trim()) return;
+
+        if (!checkLimit("smtp")) return;
+
         setSending(true);
 
         try {
+            // ... (existing logic)
             const token = await user?.getIdToken();
             await axios.post("/api/inbox/sendReply", {
                 to: recipient.email,
@@ -73,6 +80,7 @@ export function MessageDrawer({ thread, open, onClose, onReplySuccess }: Message
     return (
         <Sheet open={open} onOpenChange={(val) => !val && onClose()}>
             <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col h-full bg-background border-l">
+                {/* ... (Header, Messages List) */}
                 {/* Header */}
                 <div className="p-4 border-b flex items-center justify-between bg-card/50 backdrop-blur-sm">
                     <div className="flex items-center gap-3 overflow-hidden">
@@ -146,6 +154,7 @@ export function MessageDrawer({ thread, open, onClose, onReplySuccess }: Message
                         </Button>
                     )}
                 </div>
+                <PlanLimitModal />
             </SheetContent>
         </Sheet>
     );
@@ -171,8 +180,8 @@ function MessageItem({ message, isLast }: { message: ThreadMessage; isLast: bool
                 </div>
                 <div
                     className={`rounded-lg p-4 text-sm whitespace-pre-wrap shadow-sm border ${message.folder === 'sent'
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-card text-card-foreground border-border'
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card text-card-foreground border-border'
                         }`}
                 >
                     {message.bodyText || "No content"}

@@ -272,7 +272,8 @@ async function handleSubscriptionActivated(subscription: any, event: any) {
 
     // 3. Reset Usage for Current Month
     const date = new Date();
-    const monthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    // Use YYYY-MM-DD to match billing cycle logic
+    const monthId = date.toISOString().split('T')[0];
     await adminDB
         .collection("workspaces")
         .doc(workspaceId)

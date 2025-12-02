@@ -82,8 +82,11 @@ export async function POST(req: Request) {
     
     console.log(`[POST /api/sendEmail] Injecting tracking pixel: ${trackingPixel}`);
     
+    const fromEmail = smtpData.fromEmail || smtpData.username;
+    const fromName = smtpData.fromName || userData?.displayName || 'PitchGenie User';
+
     const info = await transporter.sendMail({
-      from: `"${userData?.displayName || 'PitchGenie User'}" <${smtpData.username}>`,
+      from: `"${fromName}" <${fromEmail}>`,
       to: to,
       subject: subject,
       text: body, // Plain text version

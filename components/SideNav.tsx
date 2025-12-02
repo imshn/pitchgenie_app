@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Upload, FileText, LogOut, UserPlus, Inbox } from "lucide-react";
+import { LayoutDashboard, Users, Upload, FileText, LogOut, UserPlus, Inbox, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
@@ -20,6 +20,7 @@ const navItems = [
   { name: "Inbox", href: "/inbox", icon: Inbox },
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Templates", href: "/templates", icon: FileText },
+  { name: "Scraper", href: "/scraper", icon: Search },
   { name: "Team", href: "/team", icon: UserPlus },
   // { name: "Profile", href: "/profile", icon: User },
   // { name: "Billing", href: "/billing", icon: CreditCard },

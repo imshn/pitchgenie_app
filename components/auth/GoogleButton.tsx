@@ -47,7 +47,7 @@ export default function GoogleButton(props: { text: string; }) {
   return (
     <Button
       onClick={handleGoogleLogin}
-      className="w-full px-4 py-6 rounded-lg bg-white hover:bg-white/90 text-white font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-glow hover:shadow-glow"
+      className="w-full px-4 py-6 rounded-lg bg-white hover:bg-white/90 text-black font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-glow hover:shadow-glow"
       variant="outline"
     >
       <FcGoogle size={22} /> {props?.text || "Continue with Google"}

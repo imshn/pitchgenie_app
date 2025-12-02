@@ -163,7 +163,7 @@ export default function AnalyticsPage() {
   const emailsOpened = summary?.emails_opened_total ?? 0;
   const emailsReplied = summary?.emails_replied_total ?? 0;
 
-  const deliveryRate = emailsGenerated > 0 ? Math.round((emailsSent / emailsGenerated) * 100) : 0;
+  const deliveryRate = emailsGenerated > 0 ? Math.min(100, Math.round((emailsSent / emailsGenerated) * 100)) : 0;
   const openRate = emailsSent > 0 ? Math.round((emailsOpened / emailsSent) * 100) : 0;
   const replyRate = emailsSent > 0 ? Math.round((emailsReplied / emailsSent) * 100) : 0;
 
@@ -274,8 +274,8 @@ export default function AnalyticsPage() {
           </Card>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-3">
-          <Card className="lg:col-span-2 flex flex-col h-[600px]">
+        <div className="flex flex-col lg:flex-row gap-6">
+          <Card className="flex-1 flex flex-col h-[400px]">
             <CardHeader className="pb-2">
               <CardTitle>Activity Overview</CardTitle>
               <CardDescription>
@@ -288,7 +288,7 @@ export default function AnalyticsPage() {
                   No activity data available
                 </div>
               ) : (
-                <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
+                <ChartContainer config={chartConfig} className="h-full w-full">
                   <AreaChart
                     accessibilityLayer
                     data={chartData}
@@ -300,7 +300,7 @@ export default function AnalyticsPage() {
                     }}
                   >
                     <CartesianGrid vertical={false} />
-                    <YAxis hide padding={{ top: 30, bottom: 20 }} />
+                    <YAxis padding={{ top: 30, bottom: 20 }} />
                     <XAxis
                       dataKey="date"
                       tickLine={false}
@@ -381,7 +381,7 @@ export default function AnalyticsPage() {
                     </defs>
                     <Area
                       dataKey="email_sent"
-                      type="natural"
+                      type="monotone"
                       fill="url(#fillEmailSent)"
                       fillOpacity={0.4}
                       stroke="var(--color-email_sent)"
@@ -389,7 +389,7 @@ export default function AnalyticsPage() {
                     />
                     <Area
                       dataKey="email_generated"
-                      type="natural"
+                      type="monotone"
                       fill="url(#fillEmailGenerated)"
                       fillOpacity={0.4}
                       stroke="var(--color-email_generated)"
@@ -397,7 +397,7 @@ export default function AnalyticsPage() {
                     />
                     <Area
                       dataKey="email_opened"
-                      type="natural"
+                      type="monotone"
                       fill="url(#fillEmailOpened)"
                       fillOpacity={0.4}
                       stroke="var(--color-email_opened)"
@@ -405,7 +405,7 @@ export default function AnalyticsPage() {
                     />
                     <Area
                       dataKey="email_replied"
-                      type="natural"
+                      type="monotone"
                       fill="url(#fillEmailReplied)"
                       fillOpacity={0.4}
                       stroke="var(--color-email_replied)"
@@ -417,118 +417,116 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col gap-6 h-[600px]">
-            {/* Engagement Trends */}
-            <Card className="flex-1 min-h-0 flex flex-col">
-              <CardHeader className="pb-2">
-                <CardTitle>Engagement Trends</CardTitle>
-                <CardDescription>Daily open and reply rates</CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 px-2 pb-2 min-h-0">
-                {chartData.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    No data
-                  </div>
-                ) : (
-                  <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
-                    <LineChart
-                      accessibilityLayer
-                      data={chartData}
-                      margin={{ left: 12, right: 12, top: 10, bottom: 5 }}
-                    >
-                      <CartesianGrid vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={4}
-                        minTickGap={32}
-                        tickFormatter={(value) => {
-                          const date = new Date(value);
-                          return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                        }}
-                      />
-                      <ChartTooltip
-                        cursor={false}
-                        content={
-                          <ChartTooltipContent
-                            labelFormatter={(value) => {
-                              return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                            }}
-                          />
-                        }
-                      />
-                      <Line
-                        dataKey="open_rate"
-                        type="monotone"
-                        stroke="var(--color-open_rate)"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        dataKey="reply_rate"
-                        type="monotone"
-                        stroke="var(--color-reply_rate)"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ChartContainer>
-                )}
-              </CardContent>
-            </Card>
+          {/* Engagement Trends */}
+          <Card className="flex-1 flex flex-col h-[400px]">
+            <CardHeader className="pb-2">
+              <CardTitle>Engagement Trends</CardTitle>
+              <CardDescription>Daily open and reply rates</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 px-2 pb-2 min-h-0">
+              {chartData.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  No data
+                </div>
+              ) : (
+                <ChartContainer config={chartConfig} className="h-full w-full">
+                  <LineChart
+                    accessibilityLayer
+                    data={chartData}
+                    margin={{ left: 12, right: 12, top: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={4}
+                      minTickGap={32}
+                      tickFormatter={(value) => {
+                        const date = new Date(value);
+                        return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      }}
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(value) => {
+                            return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                          }}
+                        />
+                      }
+                    />
+                    <Line
+                      dataKey="open_rate"
+                      type="monotone"
+                      stroke="var(--color-open_rate)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      dataKey="reply_rate"
+                      type="monotone"
+                      stroke="var(--color-reply_rate)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
 
-            {/* Deliverability Optimizations */}
-            <Card className="flex-1 min-h-0 flex flex-col">
-              <CardHeader className="pb-2">
-                <CardTitle>Deliverability Optimizations</CardTitle>
-                <CardDescription>Daily checks run</CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 px-2 pb-2 min-h-0">
-                {chartData.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    No data
-                  </div>
-                ) : (
-                  <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
-                    <BarChart
-                      accessibilityLayer
-                      data={chartData}
-                      margin={{ left: 12, right: 12, top: 10, bottom: 5 }}
-                    >
-                      <CartesianGrid vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={4}
-                        minTickGap={32}
-                        tickFormatter={(value) => {
-                          const date = new Date(value);
-                          return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                        }}
-                      />
-                      <ChartTooltip
-                        cursor={false}
-                        content={
-                          <ChartTooltipContent
-                            labelFormatter={(value) => {
-                              return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                            }}
-                          />
-                        }
-                      />
-                      <Bar
-                        dataKey="deliverability_check"
-                        fill="var(--color-deliverability_check)"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ChartContainer>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {/* Deliverability Optimizations */}
+          <Card className="flex-1 flex flex-col h-[400px]">
+            <CardHeader className="pb-2">
+              <CardTitle>Deliverability Optimizations</CardTitle>
+              <CardDescription>Daily checks run</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 px-2 pb-2 min-h-0">
+              {chartData.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  No data
+                </div>
+              ) : (
+                <ChartContainer config={chartConfig} className="h-full w-full">
+                  <BarChart
+                    accessibilityLayer
+                    data={chartData}
+                    margin={{ left: 12, right: 12, top: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={4}
+                      minTickGap={32}
+                      tickFormatter={(value) => {
+                        const date = new Date(value);
+                        return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      }}
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          labelFormatter={(value) => {
+                            return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                          }}
+                        />
+                      }
+                    />
+                    <Bar
+                      dataKey="deliverability_check"
+                      fill="var(--color-deliverability_check)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Recent Events - Full Width */}

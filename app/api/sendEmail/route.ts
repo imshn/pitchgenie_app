@@ -74,10 +74,10 @@ export async function POST(req: Request) {
     // Force ngrok if localhost is detected (debugging fix)
     if (!appUrl || appUrl.includes('localhost')) {
         console.warn('[POST /api/sendEmail] Localhost detected, forcing ngrok URL');
-        appUrl = 'https://nonexclusive-kirby-purgatively.ngrok-free.dev';
+        appUrl = 'https://app.pitchgenie.in';
     }
 
-    const trackingUrl = `${appUrl}/api/track/pixel.gif?id=${leadId}&ws=${workspaceId}&t=${Date.now()}`;
+    const trackingUrl = `${appUrl}/api/tracker/${leadId}.gif?ws=${workspaceId}&t=${Date.now()}`;
     const trackingPixel = `<img src="${trackingUrl}" alt="" width="1" height="1" border="0" />`;
     
     console.log(`[POST /api/sendEmail] Injecting tracking pixel: ${trackingPixel}`);

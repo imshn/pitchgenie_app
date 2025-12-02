@@ -1,11 +1,27 @@
 import { NextResponse } from 'next/server';
 import { adminDB, FieldValue } from '@/lib/firebase-admin';
+import fs from 'fs';
+import path from 'path';
 
-export async function GET(req: Request) {
+// 1x1 Transparent GIF Fallback
+const pixelBuffer = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    console.log('[Tracking] Incoming request:', req.url);
+    const { id } = await params;
+    // Strip .gif extension if present (to bypass ngrok warning)
+    const leadId = id.replace('.gif', '');
+    
+    const userAgent = req.headers.get('user-agent') || 'unknown';
+    console.log(`[Tracking] Incoming request for lead: ${leadId}, UA: ${userAgent}`);
+    
     const { searchParams } = new URL(req.url);
-    const leadId = searchParams.get('id');
 
     if (!leadId) {
       // Still return pixel even if invalid to avoid broken image icon
@@ -84,18 +100,25 @@ export async function GET(req: Request) {
       console.log('[Tracking] Missing workspaceId or leadId', { workspaceId, leadId });
     }
 
-    return new NextResponse(pixelBuffer, {
+    // Read the actual file from public folder (as per article)
+    const filePath = path.join(process.cwd(), 'public', 'tracking.gif');
+    const fileBuffer = fs.readFileSync(filePath);
+
+    return new NextResponse(fileBuffer, {
       headers: {
         'Content-Type': 'image/gif',
-        'Content-Length': pixelBuffer.length.toString(),
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-        'Pragma': 'no-cache',
-        'Expires': '0',
+        'Cache-Control': 'no-store, max-age=0',
       },
     });
   } catch (error) {
     console.error('[Tracking] Error:', error);
+    
+    // Fallback 1x1 pixel if file read fails
+    const pixelBuffer = Buffer.from(
+      'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      'base64'
+    );
+    
     return new NextResponse(pixelBuffer, {
       headers: { 
         'Content-Type': 'image/gif',
@@ -104,9 +127,3 @@ export async function GET(req: Request) {
     });
   }
 }
-
-// 1x1 Transparent GIF
-const pixelBuffer = Buffer.from(
-  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-  'base64'
-);
